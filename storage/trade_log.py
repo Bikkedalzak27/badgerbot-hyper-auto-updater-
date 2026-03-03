@@ -71,6 +71,22 @@ async def update_trade_status(trade_id: int, status: str) -> None:
     await asyncio.to_thread(_update_trade_status, trade_id, status)
 
 
+def _repair_trade_tpsl(trade_id: int, tp_px: float, sl_px: float) -> None:
+    connection = sqlite3.connect(str(DB_PATH))
+    try:
+        connection.execute(
+            "UPDATE trades SET tp_px = ?, sl_px = ?, status = 'OPEN' WHERE id = ?",
+            (tp_px, sl_px, trade_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+async def repair_trade_tpsl(trade_id: int, tp_px: float, sl_px: float) -> None:
+    await asyncio.to_thread(_repair_trade_tpsl, trade_id, tp_px, sl_px)
+
+
 def _close_trade(trade_id: int, pnl: float, status: str) -> None:
     closed_at = datetime.now(timezone.utc).isoformat()
     connection = sqlite3.connect(str(DB_PATH))
@@ -120,3 +136,27 @@ def _fetch_recent_closed_trades(limit: int) -> list[dict]:
 
 async def fetch_recent_closed_trades(limit: int = 10) -> list[dict]:
     return await asyncio.to_thread(_fetch_recent_closed_trades, limit)
+
+
+def _fetch_closed_trades_since(since_iso: str | None) -> list[dict]:
+    connection = sqlite3.connect(str(DB_PATH))
+    connection.row_factory = sqlite3.Row
+    try:
+        if since_iso:
+            cursor = connection.execute(
+                "SELECT * FROM trades WHERE status NOT IN ('OPEN', 'UNPROTECTED')"
+                " AND closed_at >= ? ORDER BY closed_at DESC",
+                (since_iso,),
+            )
+        else:
+            cursor = connection.execute(
+                "SELECT * FROM trades WHERE status NOT IN ('OPEN', 'UNPROTECTED')"
+                " ORDER BY closed_at DESC"
+            )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+async def fetch_closed_trades_since(since_iso: str | None = None) -> list[dict]:
+    return await asyncio.to_thread(_fetch_closed_trades_since, since_iso)
