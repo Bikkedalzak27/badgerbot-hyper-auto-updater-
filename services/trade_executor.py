@@ -99,6 +99,12 @@ async def _validate_and_size(
     if size <= 0:
         logger.warning(f"Calculated size is zero — skipping | coin={coin}")
         return None
+    notional = size * mark_price
+    if notional < 10.0:
+        logger.warning(
+            f"Below $10 minimum notional (${notional:.2f}) — skipping | coin={coin}"
+        )
+        return None
     return mark_price, size, equity
 
 
