@@ -44,12 +44,37 @@ nano .env
 | `HL_API_PRIVATE_KEY` | API wallet private key (NOT main wallet) |
 | `HL_USE_TESTNET` | `true` for testnet, `false` for mainnet |
 | `BADGERBOT_API_KEY` | Signal stream API key |
-| `POSITION_SIZE_PCT` | Position size as fraction of equity (e.g. 0.05 = 5%) |
+| `POSITION_SIZE_PCT` | Position size as multiple of equity (see sizing guide below) |
 | `MAX_SIGNAL_AGE_SECONDS` | Drop signals older than this (default: 60) |
 | `MAX_PRICE_DEVIATION_PCT` | Drop signal if price moved more than this (default: 0.01) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
 | `TELEGRAM_AUTHORIZED_USER_ID` | Your numeric Telegram user ID |
 | `POSITION_POLL_INTERVAL_SECONDS` | How often to check positions (default: 15) |
+
+## Position Sizing Guide
+
+Each trade's position size (notional) is calculated as:
+
+```
+notional = equity * POSITION_SIZE_PCT
+margin_used = notional / leverage
+```
+
+Hyperliquid enforces a **$10 minimum notional** per order. Orders below this are rejected.
+
+`POSITION_SIZE_PCT` is not capped at 1.0 — values above 1.0 use leverage to open positions larger than your equity.
+
+Example with $26 equity and 10x leverage:
+
+| POSITION_SIZE_PCT | Notional | Margin used | % of account |
+|---|---|---|---|
+| 0.50 | $13 | $1.30 | 5% |
+| 1.00 | $26 | $2.60 | 10% |
+| 2.00 | $52 | $5.20 | 20% |
+| 5.00 | $130 | $13.00 | 50% |
+| 10.00 | $260 | $26.00 | 100% |
+
+Set it based on how much margin you want to risk per trade. For small accounts, use at least `0.50` to stay above the $10 minimum.
 
 ## Run
 
