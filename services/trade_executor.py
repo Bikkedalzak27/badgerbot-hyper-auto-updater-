@@ -78,8 +78,20 @@ def calculate_position_size(
     return round(notional / mark_price, sz_decimals)
 
 
+def calculate_risk_size(
+    equity: float, risk_pct: float, entry_price: float,
+    sl_price: float, batch_size: int, sz_decimals: int,
+) -> float:
+    risk_per_signal = equity * risk_pct / batch_size
+    price_distance = abs(entry_price - sl_price)
+    if price_distance == 0:
+        return 0.0
+    return round(risk_per_signal / price_distance, sz_decimals)
+
+
 async def _validate_and_size(
-    signal: dict, info: Info, settings: Settings, leverage_config: dict
+    signal: dict, info: Info, settings: Settings, leverage_config: dict,
+    batch_size: int = 1,
 ) -> tuple[float, float, float, int, str] | None:
     """Returns (mark_price, size, equity, leverage, rejection_reason) or None on fetch error.
     rejection_reason is empty string if valid."""
@@ -99,7 +111,18 @@ async def _validate_and_size(
         return mark_price, 0, 0, leverage, "zero equity"
     await ensure_sz_decimals_cached(info)
     sz_decimals = _sz_decimals_cache.get(coin, 4)
-    if settings.position_size_usd is not None:
+    if settings.risk_pct is not None:
+        entry_price = float(signal["price"])
+        sl_price = float(signal["sl_price"])
+        size = calculate_risk_size(
+            equity, settings.risk_pct, entry_price, sl_price, batch_size, sz_decimals
+        )
+        logger.info(
+            f"Risk sizing | coin={coin} | risk={settings.risk_pct*100:.1f}%"
+            f" | batch={batch_size} | entry={entry_price} | sl={sl_price}"
+            f" | distance={abs(entry_price - sl_price):.2f} | size={size}"
+        )
+    elif settings.position_size_usd is not None:
         notional = settings.position_size_usd * leverage
         size = round(notional / mark_price, sz_decimals)
     else:
@@ -247,6 +270,7 @@ async def execute_signal(
     signal: dict, info: Info, exchange: Exchange,
     settings: Settings, leverage_config: dict,
     notify: Notifier | None = None,
+    batch_size: int = 1,
 ) -> None:
     coin = signal["coin_symbol"]
     is_long = signal["mode"] == "LONG"
@@ -254,7 +278,7 @@ async def execute_signal(
     tp_price = float(signal["tp_price"])
     sl_price = float(signal["sl_price"])
 
-    sizing = await _validate_and_size(signal, info, settings, leverage_config)
+    sizing = await _validate_and_size(signal, info, settings, leverage_config, batch_size)
     if sizing is None:
         log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "fetch failed"})
         return
@@ -315,12 +339,12 @@ def make_signal_handler(
     info: Info, exchange: Exchange, settings: Settings, leverage_config: dict,
     notify: Notifier | None = None, bot_state=None,
 ):
-    async def handler(signal: dict) -> None:
+    async def handler(signal: dict, batch_size: int = 1) -> None:
         if bot_state and bot_state.paused:
             logger.info(f"Bot paused — signal dropped | coin={signal.get('coin_symbol')}")
             return
         try:
-            await execute_signal(signal, info, exchange, settings, leverage_config, notify)
+            await execute_signal(signal, info, exchange, settings, leverage_config, notify, batch_size)
         except Exception as error:
             logger.error(f"Unexpected error in execute_signal | {error}", exc_info=True)
     return handler

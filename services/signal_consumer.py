@@ -19,7 +19,11 @@ OFFLINE_ALERT_THRESHOLD_SECONDS = 300
 OFFLINE_ALERT_COOLDOWN_SECONDS = 86400
 NO_SIGNAL_REMINDER_SECONDS = 86400
 
-SignalHandler = Callable[[dict], Awaitable[None]]
+SignalHandler = Callable[..., Awaitable[None]]
+
+BATCH_WINDOW_SECONDS = 3
+_signal_buffer: dict[float, list[dict]] = {}
+_buffer_task: asyncio.Task | None = None
 
 # Shared signal log for /signal command — max 50 entries
 signal_log: list[dict] = []
@@ -96,6 +100,29 @@ def validate_signal(signal: dict, mark_price: float, settings: Settings) -> str 
     return None
 
 
+async def _flush_buffer(handler: SignalHandler) -> None:
+    try:
+        await asyncio.sleep(BATCH_WINDOW_SECONDS)
+    except asyncio.CancelledError:
+        return
+    buffer_copy = dict(_signal_buffer)
+    _signal_buffer.clear()
+    for price, signals in buffer_copy.items():
+        batch_size = len(signals)
+        logger.info(f"Flushing batch | entry_price={price} | count={batch_size}")
+        for signal in signals:
+            await handler(signal, batch_size=batch_size)
+
+
+async def _buffer_signal(signal: dict, handler: SignalHandler) -> None:
+    global _buffer_task
+    price = float(signal["price"])
+    _signal_buffer.setdefault(price, []).append(signal)
+    if _buffer_task and not _buffer_task.done():
+        _buffer_task.cancel()
+    _buffer_task = asyncio.create_task(_flush_buffer(handler))
+
+
 async def _listen(
     websocket_url: str, signal_handler: SignalHandler, settings: Settings,
     last_message_ref: list[float],
@@ -115,7 +142,10 @@ async def _listen(
                 f"Signal received: {signal['coin_symbol']} {signal['mode']}"
                 f" @ {signal['price']} | TP: {signal['tp_price']} | SL: {signal['sl_price']}"
             )
-            await signal_handler(signal)
+            if settings.risk_pct is not None:
+                await _buffer_signal(signal, signal_handler)
+            else:
+                await signal_handler(signal)
 
 
 async def _no_signal_reminder(stop_event: asyncio.Event, notify) -> None:

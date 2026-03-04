@@ -85,20 +85,34 @@ class TelegramBot:
                         withdrawable = float(b["total"])
                         break
             lev = self._leverage_config.get("ETH", self._leverage_config.get("DEFAULT", 3))
-            if self._settings.position_size_usd is not None:
+            if self._settings.risk_pct is not None:
+                risk_label = f"{self._settings.risk_pct * 100:.1f}% risk per entry price"
+                await update.message.reply_text(
+                    f"No open positions.\n\n"
+                    f"💰 Available: ${withdrawable:,.2f}\n"
+                    f"⚡ Leverage: ETH {lev}x\n"
+                    f"📐 Next Trade: {risk_label}"
+                )
+            elif self._settings.position_size_usd is not None:
                 margin = self._settings.position_size_usd
                 margin_label = f"${margin:,.2f} margin (fixed)"
+                await update.message.reply_text(
+                    f"No open positions.\n\n"
+                    f"💰 Available: ${withdrawable:,.2f}\n"
+                    f"⚡ Leverage: ETH {lev}x\n"
+                    f"📐 Next Trade: {margin_label}"
+                )
             else:
                 notional = withdrawable * self._settings.position_size_pct
                 margin = notional / lev if lev > 0 else notional
                 pct = (margin / withdrawable * 100) if withdrawable > 0 else 0
                 margin_label = f"${margin:,.2f} margin ({pct:.1f}% of balance)"
-            await update.message.reply_text(
-                f"No open positions.\n\n"
-                f"💰 Available: ${withdrawable:,.2f}\n"
-                f"⚡ Leverage: ETH {lev}x\n"
-                f"📐 Next Trade: {margin_label}"
-            )
+                await update.message.reply_text(
+                    f"No open positions.\n\n"
+                    f"💰 Available: ${withdrawable:,.2f}\n"
+                    f"⚡ Leverage: ETH {lev}x\n"
+                    f"📐 Next Trade: {margin_label}"
+                )
             return
 
         sections = []

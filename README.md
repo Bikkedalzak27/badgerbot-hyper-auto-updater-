@@ -46,6 +46,7 @@ nano .env
 | `BADGERBOT_API_KEY` | Signal stream API key |
 | `POSITION_SIZE_PCT` | Position size as multiple of equity (see sizing guide below) |
 | `POSITION_SIZE_USD` | Fixed margin per trade in USD (overrides PCT if set) |
+| `RISK_PCT` | Risk-based sizing: max portfolio loss at SL (e.g. 0.01 = 1%). Overrides PCT and USD |
 | `MAX_SIGNAL_AGE_SECONDS` | Drop signals older than this (default: 60) |
 | `MAX_PRICE_DEVIATION_PCT` | Drop signal if price moved more than this (default: 0.01) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
@@ -86,6 +87,26 @@ POSITION_SIZE_USD=10
 ```
 
 This uses $10 margin per trade regardless of account size. The notional is calculated as `margin * leverage`, so $10 margin at 10x leverage = $100 notional. If both are set, `POSITION_SIZE_USD` takes priority over `POSITION_SIZE_PCT`.
+
+### Risk-Based Sizing
+
+To size each trade so that a stop-loss hit equals exactly X% of your portfolio:
+
+```
+RISK_PCT=0.01
+```
+
+This calculates position size as:
+
+```
+size = (equity * RISK_PCT) / abs(entry_price - sl_price)
+```
+
+With `RISK_PCT=0.01` and $1000 equity, each trade risks $10 max if SL is hit. The actual position size varies per trade based on the SL distance.
+
+When multiple signals arrive at the same entry price within 3 seconds, the risk budget is split evenly among them. For example, 3 signals at the same price each get 0.33% risk instead of 1%.
+
+Sizing priority: `RISK_PCT` > `POSITION_SIZE_USD` > `POSITION_SIZE_PCT`.
 
 ## Run
 
