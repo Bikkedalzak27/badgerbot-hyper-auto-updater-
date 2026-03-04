@@ -25,11 +25,13 @@ class BotState:
 
 
 class TelegramBot:
-    def __init__(self, settings: Settings, info: Info, exchange: Exchange, bot_state: BotState) -> None:
+    def __init__(self, settings: Settings, info: Info, exchange: Exchange, bot_state: BotState,
+                 leverage_config: dict | None = None) -> None:
         self._settings = settings
         self._info = info
         self._exchange = exchange
         self._bot_state = bot_state
+        self._leverage_config = leverage_config or {}
         self._app = Application.builder().token(settings.telegram_bot_token).build()
         self._register_handlers()
 
@@ -82,14 +84,21 @@ class TelegramBot:
                     if b["coin"] == "USDC":
                         withdrawable = float(b["total"])
                         break
+            notional = withdrawable * self._settings.position_size_pct
+            lev = self._leverage_config.get("ETH", self._leverage_config.get("DEFAULT", 3))
+            margin = notional / lev if lev > 0 else notional
+            pct = (margin / withdrawable * 100) if withdrawable > 0 else 0
             await update.message.reply_text(
                 f"No open positions.\n\n"
-                f"💰 Available: ${withdrawable:,.2f}"
+                f"💰 Available: ${withdrawable:,.2f}\n"
+                f"⚡ Leverage: ETH {lev}x\n"
+                f"📐 Next Trade: ${margin:,.2f} margin ({pct:.1f}% of balance)"
             )
             return
 
         sections = []
         for pos in open_positions:
+            coin = pos["coin"]
             szi = float(pos["szi"])
             side = "LONG" if szi > 0 else "SHORT"
             direction_emoji = "🟢" if szi > 0 else "🔴"
@@ -98,6 +107,9 @@ class TelegramBot:
             avg_entry = float(pos.get("entryPx", 0))
             raw_liq = pos.get("liquidationPx")
             liq_str = f"${float(raw_liq):,.2f}" if raw_liq else "N/A"
+            leverage_val = pos.get("leverage", {}).get("value")
+            leverage_str = f"{leverage_val}x" if leverage_val else "N/A"
+            margin = position_value / float(leverage_val) if leverage_val else position_value
             upnl = float(pos.get("unrealizedPnl", 0))
             upnl_sign = "+" if upnl >= 0 else ""
             pnl_pct_str = "N/A"
@@ -105,9 +117,10 @@ class TelegramBot:
                 pnl_pct = (upnl / (avg_entry * size)) * 100
                 pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
             sections.append(
-                f"{direction_emoji} {pos['coin']} {side}\n\n"
+                f"{direction_emoji} {coin} {side}\n\n"
                 f"📐 Size: {size} (${position_value:,.2f})\n"
                 f"💵 Avg Entry: ${avg_entry:,.2f}\n"
+                f"⚡ Leverage: {leverage_str} (${margin:,.2f} margin)\n"
                 f"💀 Liq: {liq_str}\n"
                 f"📈 uPnL: {upnl_sign}${upnl:,.2f} ({pnl_pct_str})"
             )

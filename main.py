@@ -201,7 +201,7 @@ async def main() -> None:
     exchange = await asyncio.to_thread(build_exchange, settings)
     leverage_config = load_leverage_config()
     bot_state = BotState()
-    telegram_bot = TelegramBot(settings, info, exchange, bot_state)
+    telegram_bot = TelegramBot(settings, info, exchange, bot_state, leverage_config)
     signal_handler = make_signal_handler(
         info, exchange, settings, leverage_config, telegram_bot.send, bot_state
     )
