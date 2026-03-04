@@ -108,6 +108,14 @@ When multiple signals arrive at the same entry price within 3 seconds, the risk 
 
 Sizing priority: `RISK_PCT` > `POSITION_SIZE_USD` > `POSITION_SIZE_PCT`.
 
+To switch between sizing modes, comment out or remove the line you don't want. For example, to disable risk-based sizing and fall back to USD or PCT:
+
+```
+# RISK_PCT=0.01
+```
+
+Setting `RISK_PCT=` (empty value) also disables it. Do not set it to `false` or other non-numeric values.
+
 ## Run
 
 ```bash
