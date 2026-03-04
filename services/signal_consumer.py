@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Callable, Awaitable
 
@@ -15,8 +16,31 @@ WEBSOCKET_URL = "wss://api.badgerbot.io/signals/ws"
 INITIAL_RECONNECT_DELAY_SECONDS = 1
 MAX_RECONNECT_DELAY_SECONDS = 60
 OFFLINE_ALERT_THRESHOLD_SECONDS = 300
+OFFLINE_ALERT_COOLDOWN_SECONDS = 86400
+NO_SIGNAL_REMINDER_SECONDS = 86400
 
 SignalHandler = Callable[[dict], Awaitable[None]]
+
+# Shared signal log for /signal command — max 50 entries
+signal_log: list[dict] = []
+MAX_SIGNAL_LOG = 50
+
+# Tracks last signal timestamp for daily reminder
+last_signal_at: float = 0.0
+
+
+def _format_duration(seconds: float) -> str:
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def log_signal(entry: dict) -> None:
+    signal_log.append(entry)
+    if len(signal_log) > MAX_SIGNAL_LOG:
+        signal_log.pop(0)
 
 
 def build_websocket_url(api_key: str) -> str:
@@ -46,41 +70,73 @@ def parse_signal(raw_message: str) -> dict | None:
     return data
 
 
-def validate_signal(signal: dict, mark_price: float, settings: Settings) -> bool:
+def validate_signal(signal: dict, mark_price: float, settings: Settings) -> str | None:
+    """Returns None if valid, or a rejection reason string."""
     dispatched_at = datetime.fromisoformat(signal["dispatched_at"]).replace(tzinfo=timezone.utc)
     age_seconds = (datetime.now(timezone.utc) - dispatched_at).total_seconds()
 
     if age_seconds > settings.max_signal_age_seconds:
+        reason = f"stale ({age_seconds:.0f}s)"
         logger.warning(
             f"Signal dropped: stale by {age_seconds:.0f}s | coin={signal['coin_symbol']}"
         )
-        return False
+        return reason
 
     signal_price = float(signal["price"])
     deviation = abs(mark_price - signal_price) / signal_price
 
     if deviation > settings.max_price_deviation_pct:
+        reason = f"price deviation {deviation:.1%}"
         logger.warning(
             f"Signal dropped: price deviation {deviation:.2%} > {settings.max_price_deviation_pct:.2%}"
             f" | coin={signal['coin_symbol']} | signal={signal_price} | mark={mark_price}"
         )
-        return False
+        return reason
 
-    return True
+    return None
 
 
-async def _listen(websocket_url: str, signal_handler: SignalHandler, settings: Settings) -> None:
-    async with websockets.connect(websocket_url) as websocket:
+async def _listen(
+    websocket_url: str, signal_handler: SignalHandler, settings: Settings,
+    last_message_ref: list[float],
+) -> None:
+    async with websockets.connect(
+        websocket_url, ping_interval=60, ping_timeout=120
+    ) as websocket:
         logger.info(f"Listening for signals on {WEBSOCKET_URL}")
         async for raw_message in websocket:
+            last_message_ref[0] = time.monotonic()
             signal = parse_signal(raw_message)
             if signal is None:
                 continue
+            global last_signal_at
+            last_signal_at = time.monotonic()
             logger.info(
                 f"Signal received: {signal['coin_symbol']} {signal['mode']}"
                 f" @ {signal['price']} | TP: {signal['tp_price']} | SL: {signal['sl_price']}"
             )
             await signal_handler(signal)
+
+
+async def _no_signal_reminder(stop_event: asyncio.Event, notify) -> None:
+    global last_signal_at
+    last_signal_at = time.monotonic()
+    while not stop_event.is_set():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            return
+        if stop_event.is_set():
+            return
+        elapsed = time.monotonic() - last_signal_at
+        if elapsed >= NO_SIGNAL_REMINDER_SECONDS and notify:
+            last_signal_str = _format_duration(elapsed)
+            await notify(
+                f"📡 No signals received in the last 24h\n\n"
+                f"Connection: active\n"
+                f"Last signal: {last_signal_str} ago"
+            )
+            last_signal_at = time.monotonic()
 
 
 async def connect_and_listen(
@@ -91,29 +147,57 @@ async def connect_and_listen(
 ) -> None:
     websocket_url = build_websocket_url(settings.badgerbot_api_key)
     reconnect_delay = INITIAL_RECONNECT_DELAY_SECONDS
-    last_connected_at: float | None = None
+    last_message_ref: list[float] = [time.monotonic()]
+    last_offline_alert_at: float = 0.0
 
-    while not stop_event.is_set():
+    reminder_task = asyncio.create_task(_no_signal_reminder(stop_event, notify))
+
+    try:
+        while not stop_event.is_set():
+            try:
+                last_message_ref[0] = time.monotonic()
+                reconnect_delay = INITIAL_RECONNECT_DELAY_SECONDS
+                await _listen(websocket_url, signal_handler, settings, last_message_ref)
+            except ConnectionClosed as error:
+                logger.warning(f"WebSocket disconnected: {error}")
+            except Exception as error:
+                logger.error(f"WebSocket error: {error}")
+
+            if stop_event.is_set():
+                break
+
+            since_last_msg = time.monotonic() - last_message_ref[0]
+            since_last_alert = time.monotonic() - last_offline_alert_at
+
+            if since_last_msg >= OFFLINE_ALERT_THRESHOLD_SECONDS:
+                if since_last_alert >= OFFLINE_ALERT_COOLDOWN_SECONDS or last_offline_alert_at == 0:
+                    duration_str = _format_duration(since_last_msg)
+                    msg = (
+                        f"📡 Signal feed offline\n\n"
+                        f"Last message: {duration_str} ago\n"
+                        f"Reconnecting..."
+                    )
+                    logger.error(msg)
+                    if notify:
+                        await notify(msg)
+                    last_offline_alert_at = time.monotonic()
+            else:
+                logger.warning(f"Reconnecting in {reconnect_delay}s...")
+
+            # Send reconnected notice if we had previously alerted
+            if last_offline_alert_at > 0:
+                try:
+                    await asyncio.sleep(reconnect_delay)
+                    reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY_SECONDS)
+                    continue
+                except asyncio.CancelledError:
+                    return
+
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY_SECONDS)
+    finally:
+        reminder_task.cancel()
         try:
-            last_connected_at = asyncio.get_event_loop().time()
-            reconnect_delay = INITIAL_RECONNECT_DELAY_SECONDS
-            await _listen(websocket_url, signal_handler, settings)
-        except ConnectionClosed as error:
-            logger.warning(f"WebSocket disconnected: {error}")
-        except Exception as error:
-            logger.error(f"WebSocket error: {error}")
-
-        if stop_event.is_set():
-            break
-
-        elapsed = asyncio.get_event_loop().time() - (last_connected_at or 0)
-        if elapsed >= OFFLINE_ALERT_THRESHOLD_SECONDS:
-            msg = f"Signal feed offline for {elapsed:.0f}s — check badgerbot.io connection"
-            logger.error(msg)
-            if notify:
-                await notify(msg)
-        else:
-            logger.warning(f"Reconnecting in {reconnect_delay}s...")
-
-        await asyncio.sleep(reconnect_delay)
-        reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY_SECONDS)
+            await reminder_task
+        except asyncio.CancelledError:
+            pass

@@ -10,7 +10,7 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
 from config.settings import Settings
-from services.signal_consumer import validate_signal
+from services.signal_consumer import log_signal, validate_signal
 from storage.trade_log import insert_trade, update_trade_status
 
 logger = logging.getLogger("TradeExecutor")
@@ -80,32 +80,35 @@ def calculate_position_size(
 
 async def _validate_and_size(
     signal: dict, info: Info, settings: Settings
-) -> tuple[float, float, float] | None:
+) -> tuple[float, float, float, str] | None:
+    """Returns (mark_price, size, equity, rejection_reason) or None on fetch error.
+    rejection_reason is empty string if valid."""
     coin = signal["coin_symbol"]
     try:
         mark_price = await fetch_mark_price(info, coin)
     except Exception as error:
         logger.error(f"Failed to fetch mark price | coin={coin} | {error}")
         return None
-    if not validate_signal(signal, mark_price, settings):
-        return None
+    rejection = validate_signal(signal, mark_price, settings)
+    if rejection:
+        return mark_price, 0, 0, rejection
     equity = await fetch_account_equity(info, settings.hl_account_address)
     if equity <= 0:
         logger.error(f"Account equity is zero — skipping | coin={coin}")
-        return None
+        return mark_price, 0, 0, "zero equity"
     await ensure_sz_decimals_cached(info)
     sz_decimals = _sz_decimals_cache.get(coin, 4)
     size = calculate_position_size(equity, mark_price, settings.position_size_pct, sz_decimals)
     if size <= 0:
         logger.warning(f"Calculated size is zero — skipping | coin={coin}")
-        return None
+        return mark_price, 0, 0, "zero size"
     notional = size * mark_price
     if notional < 10.0:
         logger.warning(
             f"Below $10 minimum notional (${notional:.2f}) — skipping | coin={coin}"
         )
-        return None
-    return mark_price, size, equity
+        return mark_price, 0, 0, f"below $10 min (${notional:.2f})"
+    return mark_price, size, equity, ""
 
 
 def _px_decimals(exchange: Exchange, coin: str) -> int:
@@ -242,13 +245,20 @@ async def execute_signal(
 ) -> None:
     coin = signal["coin_symbol"]
     is_long = signal["mode"] == "LONG"
+    direction = "LONG" if is_long else "SHORT"
     tp_price = float(signal["tp_price"])
     sl_price = float(signal["sl_price"])
 
     sizing = await _validate_and_size(signal, info, settings)
     if sizing is None:
+        log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "fetch failed"})
         return
-    mark_price, size, _ = sizing
+    mark_price, size, _, rejection = sizing
+    if rejection:
+        log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": rejection})
+        if notify:
+            await notify(f"⏭ {coin} {direction} skipped — {rejection}")
+        return
 
     leverage = leverage_config.get(coin, leverage_config.get("DEFAULT", 3))
     logger.info(
@@ -258,14 +268,16 @@ async def execute_signal(
 
     fill_price = await _enter_position(exchange, coin, is_long, size, leverage)
     if fill_price is None:
+        log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "order not filled"})
+        if notify:
+            await notify(f"⚠️ {coin} {direction} — order placed but did not fill")
         return
 
     # Write trade record BEFORE TP/SL — Financial Safety Rule #4
-    trade_id = await insert_trade(coin, "LONG" if is_long else "SHORT", size, fill_price, tp_price, sl_price)
+    trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
 
     tp_ok, sl_ok = await _place_tpsl_orders(exchange, coin, not is_long, size, tp_price, sl_price)
 
-    direction = "LONG" if is_long else "SHORT"
     direction_emoji = "🟢" if is_long else "🔴"
 
     if not tp_ok or not sl_ok:
@@ -275,6 +287,7 @@ async def execute_signal(
             await notify(f"⚠️ UNPROTECTED: {coin} {direction} @ ${fill_price:,.2f} — TP/SL placement failed!")
         return
 
+    log_signal({"coin": coin, "side": direction, "outcome": "filled", "entry": fill_price, "size": size})
     logger.info(f"Trade complete | coin={coin} | entry={fill_price} | TP={tp_price} | SL={sl_price}")
     if notify:
         post = await asyncio.to_thread(_fetch_post_trade_state, info, settings.hl_account_address, coin)

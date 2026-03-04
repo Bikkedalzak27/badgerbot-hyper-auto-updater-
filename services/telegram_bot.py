@@ -9,6 +9,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from config.settings import Settings
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
+from services.signal_consumer import signal_log
 from storage.trade_log import close_trade, fetch_closed_trades_since, fetch_open_trades, fetch_recent_closed_trades
 
 logger = logging.getLogger("TelegramBot")
@@ -41,6 +42,7 @@ class TelegramBot:
             ("position", self._cmd_position),
             ("close", self._cmd_close),
             ("stats", self._cmd_stats),
+            ("signal", self._cmd_signal),
             ("help", self._cmd_help),
         ]:
             self._app.add_handler(CommandHandler(name, handler))
@@ -442,6 +444,29 @@ class TelegramBot:
             f"  ✅ TP: {tp_count} | ⛔ SL: {sl_count} | 🔧 Manual: {manual_count}"
         )
 
+    async def _cmd_signal(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._is_authorized(update):
+            return
+        if not signal_log:
+            await update.message.reply_text("No signals received since last restart.")
+            return
+        lines = []
+        for entry in reversed(signal_log[-20:]):
+            outcome = entry.get("outcome", "?")
+            if outcome == "filled":
+                icon = "✅"
+                detail = f"@ ${entry.get('entry', 0):,.2f}"
+            elif outcome == "rejected":
+                icon = "⏭"
+                detail = entry.get("reason", "")
+            else:
+                icon = "❌"
+                detail = entry.get("reason", "")
+            lines.append(f"{icon} {entry.get('coin', '?')} {entry.get('side', '?')} — {detail}")
+        await update.message.reply_text(
+            f"📡 Signal Log (last {len(lines)})\n\n" + "\n".join(lines)
+        )
+
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
             return
@@ -453,6 +478,7 @@ class TelegramBot:
             "/history — last 10 closed trades\n"
             "/close <number|all> — close a specific trade or all positions\n"
             "/stats — performance dashboard (or /stats week, /stats month)\n"
+            "/signal — recent signal log (filled, rejected, errors)\n"
             "/help — this message"
         )
 
