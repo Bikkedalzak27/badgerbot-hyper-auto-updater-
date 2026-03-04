@@ -45,6 +45,7 @@ nano .env
 | `HL_USE_TESTNET` | `true` for testnet, `false` for mainnet |
 | `BADGERBOT_API_KEY` | Signal stream API key |
 | `POSITION_SIZE_PCT` | Position size as multiple of equity (see sizing guide below) |
+| `POSITION_SIZE_USD` | Fixed margin per trade in USD (overrides PCT if set) |
 | `MAX_SIGNAL_AGE_SECONDS` | Drop signals older than this (default: 60) |
 | `MAX_PRICE_DEVIATION_PCT` | Drop signal if price moved more than this (default: 0.01) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
@@ -75,6 +76,16 @@ Example with $26 equity and 10x leverage:
 | 10.00 | $260 | $26.00 | 100% |
 
 Set it based on how much margin you want to risk per trade. For small accounts, use at least `0.50` to stay above the $10 minimum.
+
+### Fixed Margin Mode
+
+To use a fixed dollar amount of margin per trade instead of a percentage, set `POSITION_SIZE_USD`:
+
+```
+POSITION_SIZE_USD=10
+```
+
+This uses $10 margin per trade regardless of account size. The notional is calculated as `margin * leverage`, so $10 margin at 10x leverage = $100 notional. If both are set, `POSITION_SIZE_USD` takes priority over `POSITION_SIZE_PCT`.
 
 ## Run
 
@@ -135,6 +146,7 @@ tmux new -s hyperbot
 | `/history` | Last 10 closed trades |
 | `/close <N\|all>` | Close a specific trade or all positions |
 | `/stats` | Performance dashboard (also `/stats week`, `/stats month`) |
+| `/signal` | Recent signal log (filled, rejected, errors) |
 | `/help` | List all commands |
 
 ## Test Signal

@@ -79,11 +79,12 @@ def calculate_position_size(
 
 
 async def _validate_and_size(
-    signal: dict, info: Info, settings: Settings
-) -> tuple[float, float, float, str] | None:
-    """Returns (mark_price, size, equity, rejection_reason) or None on fetch error.
+    signal: dict, info: Info, settings: Settings, leverage_config: dict
+) -> tuple[float, float, float, int, str] | None:
+    """Returns (mark_price, size, equity, leverage, rejection_reason) or None on fetch error.
     rejection_reason is empty string if valid."""
     coin = signal["coin_symbol"]
+    leverage = leverage_config.get(coin, leverage_config.get("DEFAULT", 3))
     try:
         mark_price = await fetch_mark_price(info, coin)
     except Exception as error:
@@ -91,24 +92,28 @@ async def _validate_and_size(
         return None
     rejection = validate_signal(signal, mark_price, settings)
     if rejection:
-        return mark_price, 0, 0, rejection
+        return mark_price, 0, 0, leverage, rejection
     equity = await fetch_account_equity(info, settings.hl_account_address)
     if equity <= 0:
         logger.error(f"Account equity is zero — skipping | coin={coin}")
-        return mark_price, 0, 0, "zero equity"
+        return mark_price, 0, 0, leverage, "zero equity"
     await ensure_sz_decimals_cached(info)
     sz_decimals = _sz_decimals_cache.get(coin, 4)
-    size = calculate_position_size(equity, mark_price, settings.position_size_pct, sz_decimals)
+    if settings.position_size_usd is not None:
+        notional = settings.position_size_usd * leverage
+        size = round(notional / mark_price, sz_decimals)
+    else:
+        size = calculate_position_size(equity, mark_price, settings.position_size_pct, sz_decimals)
     if size <= 0:
         logger.warning(f"Calculated size is zero — skipping | coin={coin}")
-        return mark_price, 0, 0, "zero size"
+        return mark_price, 0, 0, leverage, "zero size"
     notional = size * mark_price
     if notional < 10.0:
         logger.warning(
             f"Below $10 minimum notional (${notional:.2f}) — skipping | coin={coin}"
         )
-        return mark_price, 0, 0, f"below $10 min (${notional:.2f})"
-    return mark_price, size, equity, ""
+        return mark_price, 0, 0, leverage, f"below $10 min (${notional:.2f})"
+    return mark_price, size, equity, leverage, ""
 
 
 def _px_decimals(exchange: Exchange, coin: str) -> int:
@@ -249,18 +254,16 @@ async def execute_signal(
     tp_price = float(signal["tp_price"])
     sl_price = float(signal["sl_price"])
 
-    sizing = await _validate_and_size(signal, info, settings)
+    sizing = await _validate_and_size(signal, info, settings, leverage_config)
     if sizing is None:
         log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "fetch failed"})
         return
-    mark_price, size, _, rejection = sizing
+    mark_price, size, _, leverage, rejection = sizing
     if rejection:
         log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": rejection})
         if notify:
             await notify(f"⏭ {coin} {direction} skipped — {rejection}")
         return
-
-    leverage = leverage_config.get(coin, leverage_config.get("DEFAULT", 3))
     logger.info(
         f"EXECUTING: {coin} {'LONG' if is_long else 'SHORT'}"
         f" | size={size} | notional=${size * mark_price:.2f} | leverage={leverage}x"

@@ -84,15 +84,20 @@ class TelegramBot:
                     if b["coin"] == "USDC":
                         withdrawable = float(b["total"])
                         break
-            notional = withdrawable * self._settings.position_size_pct
             lev = self._leverage_config.get("ETH", self._leverage_config.get("DEFAULT", 3))
-            margin = notional / lev if lev > 0 else notional
-            pct = (margin / withdrawable * 100) if withdrawable > 0 else 0
+            if self._settings.position_size_usd is not None:
+                margin = self._settings.position_size_usd
+                margin_label = f"${margin:,.2f} margin (fixed)"
+            else:
+                notional = withdrawable * self._settings.position_size_pct
+                margin = notional / lev if lev > 0 else notional
+                pct = (margin / withdrawable * 100) if withdrawable > 0 else 0
+                margin_label = f"${margin:,.2f} margin ({pct:.1f}% of balance)"
             await update.message.reply_text(
                 f"No open positions.\n\n"
                 f"💰 Available: ${withdrawable:,.2f}\n"
                 f"⚡ Leverage: ETH {lev}x\n"
-                f"📐 Next Trade: ${margin:,.2f} margin ({pct:.1f}% of balance)"
+                f"📐 Next Trade: {margin_label}"
             )
             return
 
