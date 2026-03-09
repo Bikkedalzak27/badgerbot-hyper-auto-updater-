@@ -16,7 +16,7 @@ logger = logging.getLogger("TelegramBot")
 
 
 def _b(text) -> str:
-    return f"<b>{text}</b>"
+    return f"<code>{text}</code>"
 
 
 def _price_matches(a: float, b: float) -> bool:
@@ -474,9 +474,9 @@ class TelegramBot:
         worst_label = f"-${abs(worst_pnl):,.2f} ({worst['coin']} {worst['side']})"
 
         await update.message.reply_text(
-            f"📊 Performance — {label}\n\n"
+            f"📊 Performance — {_b(label)}\n\n"
             f"🏁 Trades: {_b(total)} | Win Rate: {_b(f'{win_rate:.1f}%')}\n"
-            f"💰 Total PnL: {_b(f'{pnl_sign}${total_pnl:,.2f} ({pct_sign}{total_pct:.2f}%)')}\n"
+            f"💰 Total PnL: {_b(f'{pnl_sign}${total_pnl:,.2f}')} ({pct_sign}{total_pct:.2f}%)\n"
             f"📈 Avg Win: {_b(f'+${avg_win:,.2f}')} | 📉 Avg Loss: {_b(f'-${abs(avg_loss):,.2f}')}\n"
             f"🏆 Best: {_b(best_label)}\n"
             f"💀 Worst: {_b(worst_label)}\n"
