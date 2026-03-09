@@ -15,8 +15,8 @@ from storage.trade_log import close_trade, fetch_closed_trades_since, fetch_open
 logger = logging.getLogger("TelegramBot")
 
 
-def _link(text) -> str:
-    return f'<a href="tg://noop">{text}</a>'
+def _b(text) -> str:
+    return f"<b>{text}</b>"
 
 
 def _price_matches(a: float, b: float) -> bool:
@@ -475,14 +475,14 @@ class TelegramBot:
 
         await update.message.reply_text(
             f"📊 Performance — {label}\n\n"
-            f"🏁 Trades: {_link(total)} | Win Rate: {_link(f'{win_rate:.1f}%')}\n"
-            f"💰 Total PnL: {_link(f'{pnl_sign}${total_pnl:,.2f} ({pct_sign}{total_pct:.2f}%)')}\n"
-            f"📈 Avg Win: {_link(f'+${avg_win:,.2f}')} | 📉 Avg Loss: {_link(f'-${abs(avg_loss):,.2f}')}\n"
-            f"🏆 Best: {_link(best_label)}\n"
-            f"💀 Worst: {_link(worst_label)}\n"
-            f"⏱ Avg Hold: {_link(hold_str)}\n\n"
+            f"🏁 Trades: {_b(total)} | Win Rate: {_b(f'{win_rate:.1f}%')}\n"
+            f"💰 Total PnL: {_b(f'{pnl_sign}${total_pnl:,.2f} ({pct_sign}{total_pct:.2f}%)')}\n"
+            f"📈 Avg Win: {_b(f'+${avg_win:,.2f}')} | 📉 Avg Loss: {_b(f'-${abs(avg_loss):,.2f}')}\n"
+            f"🏆 Best: {_b(best_label)}\n"
+            f"💀 Worst: {_b(worst_label)}\n"
+            f"⏱ Avg Hold: {_b(hold_str)}\n\n"
             f"Close Reasons:\n"
-            f"  ✅ TP: {_link(tp_count)} | ⛔ SL: {_link(sl_count)} | 🔧 Manual: {_link(manual_count)}",
+            f"  ✅ TP: {_b(tp_count)} | ⛔ SL: {_b(sl_count)} | 🔧 Manual: {_b(manual_count)}",
             parse_mode="HTML",
         )
 
