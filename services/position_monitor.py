@@ -73,10 +73,10 @@ def _format_close_notification(trade: dict, close_px: float, pnl: float, status:
     pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
 
     return (
-        f"{direction_emoji} {trade['coin']} {side} CLOSED — {status} @ ${close_px:,.2f}\n\n"
-        f"📐 Size: {size} (${size * close_px:,.2f})\n"
-        f"💵 Entry: ${entry_px:,.2f} → Exit: ${close_px:,.2f}\n"
-        f"📈 PnL: {pnl_sign}${pnl:,.2f} ({pnl_pct_str})"
+        f"{direction_emoji} {trade['coin']} {side} CLOSED — {status} @ <code>${close_px:,.2f}</code>\n\n"
+        f"📐 Size: <code>{size} (${size * close_px:,.2f})</code>\n"
+        f"💵 Entry: <code>${entry_px:,.2f}</code> → Exit: <code>${close_px:,.2f}</code>\n"
+        f"📈 PnL: <code>{pnl_sign}${pnl:,.2f} ({pnl_pct_str})</code>"
     )
 
 
@@ -150,7 +150,7 @@ async def _check_closed_positions(info, settings, notify) -> None:
     for coin, hl_size in hl_positions.items():
         if coin not in trades_by_coin and coin not in _alerted_orphan_coins:
             _alerted_orphan_coins.add(coin)
-            msg = f"Untracked position: {coin} size={hl_size} — no DB record. Close manually or wait for next signal."
+            msg = f"Untracked position: {coin} size=<code>{hl_size}</code> — no DB record. Close manually or wait for next signal."
             logger.warning(msg)
             await notify(msg)
 

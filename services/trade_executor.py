@@ -286,7 +286,7 @@ async def execute_signal(
     if rejection:
         log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": rejection})
         if notify:
-            await notify(f"⏭ {coin} {direction} skipped — {rejection}")
+            await notify(f"⏭ {coin} {direction} skipped — <code>{rejection}</code>")
         return
     logger.info(
         f"EXECUTING: {coin} {'LONG' if is_long else 'SHORT'}"
@@ -297,7 +297,7 @@ async def execute_signal(
     if fill_price is None:
         log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "order not filled"})
         if notify:
-            await notify(f"⚠️ {coin} {direction} — order placed but did not fill")
+            await notify(f"⚠️ {coin} {direction} — <code>order placed but did not fill</code>")
         return
 
     # Write trade record BEFORE TP/SL — Financial Safety Rule #4
@@ -311,7 +311,7 @@ async def execute_signal(
         await update_trade_status(trade_id, "UNPROTECTED")
         logger.error(f"POSITION UNPROTECTED — TP/SL failed | coin={coin} | trade_id={trade_id}")
         if notify:
-            await notify(f"⚠️ UNPROTECTED: {coin} {direction} @ ${fill_price:,.2f} — TP/SL placement failed!")
+            await notify(f"⚠️ UNPROTECTED: {coin} {direction} @ <code>${fill_price:,.2f}</code> — TP/SL placement failed!")
         return
 
     log_signal({"coin": coin, "side": direction, "outcome": "filled", "entry": fill_price, "size": size})
@@ -323,15 +323,15 @@ async def execute_signal(
         margin_pct = (post["margin_used"] / post["account_value"] * 100) if post["account_value"] > 0 else 0
         await notify(
             f"{direction_emoji} {coin} {direction} OPENED\n\n"
-            f"📐 Size: {size} (${notional:,.2f})\n"
-            f"💵 Entry: ${fill_price:,.2f}\n"
-            f"✅ TP: ${tp_price:,.2f}\n"
-            f"⛔ SL: ${sl_price:,.2f}\n"
-            f"⚡ Leverage: {leverage}x\n"
-            f"💀 Liq: {liq_str}\n\n"
-            f"🏦 Account Value: ${post['account_value']:,.2f}\n"
-            f"🎢 Margin Used: ${post['margin_used']:,.2f} ({margin_pct:.1f}%)\n"
-            f"💰 Available: ${post['withdrawable']:,.2f}"
+            f"📐 Size: <code>{size} (${notional:,.2f})</code>\n"
+            f"💵 Entry: <code>${fill_price:,.2f}</code>\n"
+            f"✅ TP: <code>${tp_price:,.2f}</code>\n"
+            f"⛔ SL: <code>${sl_price:,.2f}</code>\n"
+            f"⚡ Leverage: <code>{leverage}x</code>\n"
+            f"💀 Liq: <code>{liq_str}</code>\n\n"
+            f"🏦 Account Value: <code>${post['account_value']:,.2f}</code>\n"
+            f"🎢 Margin Used: <code>${post['margin_used']:,.2f} ({margin_pct:.1f}%)</code>\n"
+            f"💰 Available: <code>${post['withdrawable']:,.2f}</code>"
         )
 
 

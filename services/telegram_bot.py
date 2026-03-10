@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from config.settings import Settings
@@ -65,6 +65,7 @@ class TelegramBot:
             await self._app.bot.send_message(
                 chat_id=self._settings.telegram_authorized_user_id,
                 text=text,
+                parse_mode="HTML",
             )
         except Exception as error:
             logger.error(f"Telegram send failed: {error}")
@@ -93,18 +94,20 @@ class TelegramBot:
                 risk_label = f"{self._settings.risk_pct * 100:.1f}% risk per entry price"
                 await update.message.reply_text(
                     f"No open positions.\n\n"
-                    f"💰 Available: ${withdrawable:,.2f}\n"
-                    f"⚡ Leverage: ETH {lev}x\n"
-                    f"📐 Next Trade: {risk_label}"
+                    f"💰 Available: {_b(f'${withdrawable:,.2f}')}\n"
+                    f"⚡ Leverage: {_b(f'ETH {lev}x')}\n"
+                    f"📐 Next Trade: {_b(risk_label)}",
+                    parse_mode="HTML",
                 )
             elif self._settings.position_size_usd is not None:
                 margin = self._settings.position_size_usd
                 margin_label = f"${margin:,.2f} margin (fixed)"
                 await update.message.reply_text(
                     f"No open positions.\n\n"
-                    f"💰 Available: ${withdrawable:,.2f}\n"
-                    f"⚡ Leverage: ETH {lev}x\n"
-                    f"📐 Next Trade: {margin_label}"
+                    f"💰 Available: {_b(f'${withdrawable:,.2f}')}\n"
+                    f"⚡ Leverage: {_b(f'ETH {lev}x')}\n"
+                    f"📐 Next Trade: {_b(margin_label)}",
+                    parse_mode="HTML",
                 )
             else:
                 notional = withdrawable * self._settings.position_size_pct
@@ -113,9 +116,10 @@ class TelegramBot:
                 margin_label = f"${margin:,.2f} margin ({pct:.1f}% of balance)"
                 await update.message.reply_text(
                     f"No open positions.\n\n"
-                    f"💰 Available: ${withdrawable:,.2f}\n"
-                    f"⚡ Leverage: ETH {lev}x\n"
-                    f"📐 Next Trade: {margin_label}"
+                    f"💰 Available: {_b(f'${withdrawable:,.2f}')}\n"
+                    f"⚡ Leverage: {_b(f'ETH {lev}x')}\n"
+                    f"📐 Next Trade: {_b(margin_label)}",
+                    parse_mode="HTML",
                 )
             return
 
@@ -141,13 +145,13 @@ class TelegramBot:
                 pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
             sections.append(
                 f"{direction_emoji} {coin} {side}\n\n"
-                f"📐 Size: {size} (${position_value:,.2f})\n"
-                f"💵 Avg Entry: ${avg_entry:,.2f}\n"
-                f"⚡ Leverage: {leverage_str} (${margin:,.2f} margin)\n"
-                f"💀 Liq: {liq_str}\n"
-                f"📈 uPnL: {upnl_sign}${upnl:,.2f} ({pnl_pct_str})"
+                f"📐 Size: {_b(f'{size} (${position_value:,.2f})')}\n"
+                f"💵 Avg Entry: {_b(f'${avg_entry:,.2f}')}\n"
+                f"⚡ Leverage: {_b(f'{leverage_str} (${margin:,.2f} margin)')}\n"
+                f"💀 Liq: {_b(liq_str)}\n"
+                f"📈 uPnL: {_b(f'{upnl_sign}${upnl:,.2f} ({pnl_pct_str})')}"
             )
-        await update.message.reply_text("\n\n".join(sections))
+        await update.message.reply_text("\n\n".join(sections), parse_mode="HTML")
 
     async def _cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
@@ -172,8 +176,11 @@ class TelegramBot:
         for t in trades:
             pnl = t.get("pnl")
             pnl_str = f"+${pnl:,.2f}" if pnl and pnl >= 0 else f"-${abs(pnl):,.2f}" if pnl else "N/A"
-            lines.append(f"{t['coin']} {t['side']} | Entry ${t['entry_px']:,.2f} | {t['status']} | PnL {pnl_str}")
-        await update.message.reply_text("Recent trades:\n" + "\n".join(lines))
+            entry = float(t["entry_px"])
+            lines.append(
+                f"{t['coin']} {t['side']} | Entry {_b(f'${entry:,.2f}')} | {t['status']} | PnL {_b(pnl_str)}"
+            )
+        await update.message.reply_text("Recent trades:\n" + "\n".join(lines), parse_mode="HTML")
 
     async def _cmd_position(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
@@ -233,18 +240,22 @@ class TelegramBot:
             trade_rows = []
             for trade in coin_trades:
                 idx = trades.index(trade) + 1
+                t_size = float(trade["size"])
+                t_entry = float(trade["entry_px"])
+                t_tp = float(trade["tp_px"])
+                t_sl = float(trade["sl_px"])
                 trade_rows.append(
-                    f"  #{idx} — {float(trade['size'])} @ ${float(trade['entry_px']):,.2f}"
-                    f" | ✅ ${float(trade['tp_px']):,.2f} | ⛔ ${float(trade['sl_px']):,.2f}"
+                    f"  #{idx} — {_b(f'{t_size} @ ${t_entry:,.2f}')}"
+                    f" | ✅ {_b(f'${t_tp:,.2f}')} | ⛔ {_b(f'${t_sl:,.2f}')}"
                 )
 
             sections.append(
                 f"{direction_emoji} {coin} {side} — {len(coin_trades)} trade{'s' if len(coin_trades) > 1 else ''}\n\n"
-                f"📐 Total Size: {total_size} (${position_value:,.2f})\n"
-                f"💵 Avg Entry: ${avg_entry:,.2f}\n"
-                f"💀 Liq: {liq_str}\n"
-                f"⚡ Leverage: {leverage_str}\n"
-                f"🔛 Funding: {funding_str}\n"
+                f"📐 Total Size: {_b(f'{total_size} (${position_value:,.2f})')}\n"
+                f"💵 Avg Entry: {_b(f'${avg_entry:,.2f}')}\n"
+                f"💀 Liq: {_b(liq_str)}\n"
+                f"⚡ Leverage: {_b(leverage_str)}\n"
+                f"🔛 Funding: {_b(funding_str)}\n"
                 + "\n".join(trade_rows)
             )
 
@@ -257,12 +268,12 @@ class TelegramBot:
         upnl_pct_str = f" ({upnl_sign}{total_upnl / total_cost * 100:.2f}%)" if total_cost > 0 else ""
 
         footer = (
-            f"\n\n📈 uPnL: {upnl_sign}${total_upnl:,.2f}{upnl_pct_str}\n\n"
-            f"🏦 Account Value: ${account_value:,.2f}\n"
-            f"🎢 Margin Used: ${margin_used:,.2f} ({margin_pct:.1f}%)\n"
-            f"💰 Available: ${available:,.2f}"
+            f"\n\n📈 uPnL: {_b(f'{upnl_sign}${total_upnl:,.2f}{upnl_pct_str}')}\n\n"
+            f"🏦 Account Value: {_b(f'${account_value:,.2f}')}\n"
+            f"🎢 Margin Used: {_b(f'${margin_used:,.2f} ({margin_pct:.1f}%)')}\n"
+            f"💰 Available: {_b(f'${available:,.2f}')}"
         )
-        await update.message.reply_text("\n\n".join(sections) + footer)
+        await update.message.reply_text("\n\n".join(sections) + footer, parse_mode="HTML")
 
     async def _cmd_close(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
@@ -358,10 +369,11 @@ class TelegramBot:
         pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
         pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
         await update.message.reply_text(
-            f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ ${fill_px:,.2f}\n\n"
-            f"📐 Size: {size} (${size * fill_px:,.2f})\n"
-            f"💵 Entry: ${entry_px:,.2f} → Exit: ${fill_px:,.2f}\n"
-            f"📈 PnL: {pnl_sign}${pnl:,.2f} ({pnl_pct_str})"
+            f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n\n"
+            f"📐 Size: {_b(f'{size} (${size * fill_px:,.2f})')}\n"
+            f"💵 Entry: {_b(f'${entry_px:,.2f}')} → Exit: {_b(f'${fill_px:,.2f}')}\n"
+            f"📈 PnL: {_b(f'{pnl_sign}${pnl:,.2f} ({pnl_pct_str})')}",
+            parse_mode="HTML",
         )
 
     async def _close_all_trades(self, update: Update, open_trades: list) -> None:
@@ -396,10 +408,10 @@ class TelegramBot:
                 pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
                 pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
                 lines.append(
-                    f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ ${fill_px:,.2f}\n"
-                    f"📐 Size: {size} (${size * fill_px:,.2f})\n"
-                    f"💵 Entry: ${entry_px:,.2f} → Exit: ${fill_px:,.2f}\n"
-                    f"📈 PnL: {pnl_sign}${pnl:,.2f} ({pnl_pct_str})"
+                    f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n"
+                    f"📐 Size: {_b(f'{size} (${size * fill_px:,.2f})')}\n"
+                    f"💵 Entry: {_b(f'${entry_px:,.2f}')} → Exit: {_b(f'${fill_px:,.2f}')}\n"
+                    f"📈 PnL: {_b(f'{pnl_sign}${pnl:,.2f} ({pnl_pct_str})')}"
                 )
 
             oids = await self._fetch_all_trigger_oids(coin)
@@ -407,8 +419,8 @@ class TelegramBot:
 
         total_sign = "+" if total_pnl >= 0 else ""
         total_pct_str = f" ({total_sign}{total_pnl / total_cost * 100:.2f}%)" if total_cost > 0 else ""
-        lines.append(f"💰 Total PnL: {total_sign}${total_pnl:,.2f}{total_pct_str}")
-        await update.message.reply_text("\n\n".join(lines))
+        lines.append(f"💰 Total PnL: {_b(f'{total_sign}${total_pnl:,.2f}{total_pct_str}')}")
+        await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
     async def _cmd_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
@@ -497,35 +509,48 @@ class TelegramBot:
             outcome = entry.get("outcome", "?")
             if outcome == "filled":
                 icon = "✅"
-                detail = f"@ ${entry.get('entry', 0):,.2f}"
+                fill_px = entry.get("entry", 0)
+                detail = f"@ {_b(f'${fill_px:,.2f}')}"
             elif outcome == "rejected":
                 icon = "⏭"
-                detail = entry.get("reason", "")
+                detail = _b(entry.get("reason", ""))
             else:
                 icon = "❌"
-                detail = entry.get("reason", "")
+                detail = _b(entry.get("reason", ""))
             lines.append(f"{icon} {entry.get('coin', '?')} {entry.get('side', '?')} — {detail}")
         await update.message.reply_text(
-            f"📡 Signal Log (last {len(lines)})\n\n" + "\n".join(lines)
+            f"📡 Signal Log (last {_b(len(lines))})\n\n" + "\n".join(lines),
+            parse_mode="HTML",
         )
 
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._is_authorized(update):
             return
         await update.message.reply_text(
-            "/status — open positions or available balance\n"
-            "/position — individual trade records with funding\n"
-            "/pause — stop processing signals\n"
-            "/resume — resume signals\n"
-            "/history — last 10 closed trades\n"
-            "/close <number|all> — close a specific trade or all positions\n"
-            "/stats — performance dashboard (or /stats week, /stats month)\n"
-            "/signal — recent signal log (filled, rejected, errors)\n"
-            "/help — this message"
+            "📊 /status — open positions or available balance\n"
+            "📋 /position — individual trade records with funding\n"
+            "⏸ /pause — stop processing signals\n"
+            "▶️ /resume — resume signals\n"
+            "📜 /history — last 10 closed trades\n"
+            "🔒 /close <number|all> — close a specific trade or all positions\n"
+            "📈 /stats — performance dashboard (or /stats week, /stats month)\n"
+            "📡 /signal — recent signal log (filled, rejected, errors)\n"
+            "❓ /help — this message"
         )
 
     async def run(self, stop_event: asyncio.Event) -> None:
         async with self._app:
+            await self._app.bot.set_my_commands([
+                BotCommand("status", "📊 Open positions or balance"),
+                BotCommand("position", "📋 Trade records with TP/SL"),
+                BotCommand("history", "📜 Last 10 closed trades"),
+                BotCommand("stats", "📈 Performance dashboard"),
+                BotCommand("signal", "📡 Recent signal log"),
+                BotCommand("close", "🔒 Close trade or all positions"),
+                BotCommand("pause", "⏸ Stop processing signals"),
+                BotCommand("resume", "▶️ Resume processing signals"),
+                BotCommand("help", "❓ List all commands"),
+            ])
             await self._app.start()
             await self._app.updater.start_polling(drop_pending_updates=True)
             logger.info("Telegram bot polling started.")

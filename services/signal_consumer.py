@@ -163,8 +163,8 @@ async def _no_signal_reminder(stop_event: asyncio.Event, notify) -> None:
             last_signal_str = _format_duration(elapsed)
             await notify(
                 f"📡 No signals received in the last 24h\n\n"
-                f"Connection: active\n"
-                f"Last signal: {last_signal_str} ago"
+                f"Connection: <code>active</code>\n"
+                f"Last signal: <code>{last_signal_str} ago</code>"
             )
             last_signal_at = time.monotonic()
 
@@ -204,7 +204,7 @@ async def connect_and_listen(
                     duration_str = _format_duration(since_last_msg)
                     msg = (
                         f"📡 Signal feed offline\n\n"
-                        f"Last message: {duration_str} ago\n"
+                        f"Last message: <code>{duration_str} ago</code>\n"
                         f"Reconnecting..."
                     )
                     logger.error(msg)
