@@ -67,7 +67,7 @@ def _format_close_notification(trade: dict, close_px: float, pnl: float, status:
     entry_px = float(trade["entry_px"])
     size = float(trade["size"])
     side = trade["side"]
-    direction_emoji = "🟢" if side == "LONG" else "🔴"
+    direction_emoji = "⛔" if status == "SL" else ("🟢" if side == "LONG" else "🔴")
     pnl_sign = "+" if pnl >= 0 else ""
     pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
     pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
