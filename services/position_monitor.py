@@ -63,13 +63,13 @@ def _determine_close_status(trade: dict, close_px: float) -> str:
         return "TP" if close_px <= midpoint else "SL"
 
 
-def _format_close_notification(trade: dict, close_px: float, pnl: float, status: str) -> str:
+def _format_close_notification(trade: dict, close_px: float, pnl: float, status: str, equity: float) -> str:
     entry_px = float(trade["entry_px"])
     size = float(trade["size"])
     side = trade["side"]
     direction_emoji = "⛔" if status == "SL" else ("🟢" if side == "LONG" else "🔴")
     pnl_sign = "+" if pnl >= 0 else ""
-    pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
+    pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
     pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
 
     return (
@@ -81,7 +81,7 @@ def _format_close_notification(trade: dict, close_px: float, pnl: float, status:
 
 
 async def _process_coin_closures(
-    coin: str, db_trades: list[dict], fills: list, notify
+    coin: str, db_trades: list[dict], fills: list, notify, equity: float
 ) -> None:
     """Match close fills to DB trades and close each one individually."""
     side = db_trades[0]["side"]
@@ -117,7 +117,7 @@ async def _process_coin_closures(
             f"{coin} {side} closed | status={status}"
             f" | entry={trade['entry_px']} exit={fill_px} pnl={pnl:+.2f}"
         )
-        await notify(_format_close_notification(trade, fill_px, pnl, status))
+        await notify(_format_close_notification(trade, fill_px, pnl, status, equity))
 
 
 async def _check_closed_positions(info, settings, notify) -> None:
@@ -126,7 +126,14 @@ async def _check_closed_positions(info, settings, notify) -> None:
         return
 
     user_state = await asyncio.to_thread(info.user_state, settings.hl_account_address)
+    spot_state = await asyncio.to_thread(info.spot_user_state, settings.hl_account_address)
     hl_positions = _extract_open_positions(user_state)
+    perps_equity = float(user_state.get("marginSummary", {}).get("accountValue", 0))
+    spot_usdc = next(
+        (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
+        0.0,
+    )
+    equity = max(perps_equity, spot_usdc)
 
     trades_by_coin: dict[str, list[dict]] = {}
     for trade in open_trades:
@@ -145,7 +152,7 @@ async def _check_closed_positions(info, settings, notify) -> None:
             f" hl_size={current_hl_size:.6f} closed={closed_amount:.6f}"
         )
         fills = await asyncio.to_thread(info.user_fills, settings.hl_account_address)
-        await _process_coin_closures(coin, db_trades, fills, notify)
+        await _process_coin_closures(coin, db_trades, fills, notify, equity)
 
     for coin, hl_size in hl_positions.items():
         if coin not in trades_by_coin and coin not in _alerted_orphan_coins:

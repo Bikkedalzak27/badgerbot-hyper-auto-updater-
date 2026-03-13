@@ -123,6 +123,9 @@ class TelegramBot:
                 )
             return
 
+        from services.trade_executor import fetch_account_equity
+        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
         sections = []
         for pos in open_positions:
             coin = pos["coin"]
@@ -139,10 +142,8 @@ class TelegramBot:
             margin = position_value / float(leverage_val) if leverage_val else position_value
             upnl = float(pos.get("unrealizedPnl", 0))
             upnl_sign = "+" if upnl >= 0 else ""
-            pnl_pct_str = "N/A"
-            if avg_entry > 0 and size > 0:
-                pnl_pct = (upnl / (avg_entry * size)) * 100
-                pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
+            pnl_pct = (upnl / equity) * 100 if equity > 0 else 0
+            pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
             sections.append(
                 f"{direction_emoji} {coin} {side}\n\n"
                 f"📐 Size: {_b(f'{size} (${position_value:,.2f})')}\n"
@@ -260,12 +261,9 @@ class TelegramBot:
             )
 
         total_upnl = sum(float(pos.get("unrealizedPnl", 0)) for pos in hl_positions.values())
-        total_cost = sum(
-            abs(float(pos.get("szi", 0))) * float(pos.get("entryPx", 0))
-            for pos in hl_positions.values()
-        )
         upnl_sign = "+" if total_upnl >= 0 else ""
-        upnl_pct_str = f" ({upnl_sign}{total_upnl / total_cost * 100:.2f}%)" if total_cost > 0 else ""
+        upnl_pct = (total_upnl / account_value * 100) if account_value > 0 else 0
+        upnl_pct_str = f" ({upnl_sign}{upnl_pct:.2f}%)"
 
         footer = (
             f"\n\n📈 uPnL: {_b(f'{upnl_sign}${total_upnl:,.2f}{upnl_pct_str}')}\n\n"
@@ -364,9 +362,11 @@ class TelegramBot:
         oids = await self._fetch_tpsl_oids_by_price(coin, tp_px, sl_px)
         await self._cancel_oids(coin, oids)
 
+        from services.trade_executor import fetch_account_equity
+        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
         direction_emoji = "🟢" if side == "LONG" else "🔴"
         pnl_sign = "+" if pnl >= 0 else ""
-        pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
+        pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
         pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
         await update.message.reply_text(
             f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n\n"
@@ -377,13 +377,15 @@ class TelegramBot:
         )
 
     async def _close_all_trades(self, update: Update, open_trades: list) -> None:
+        from services.trade_executor import fetch_account_equity
+        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
         coins_seen = {}
         for trade in open_trades:
             coins_seen.setdefault(trade["coin"], []).append(trade)
 
         lines = []
         total_pnl = 0.0
-        total_cost = 0.0
         for coin, trades in coins_seen.items():
             try:
                 result = await asyncio.to_thread(
@@ -401,11 +403,10 @@ class TelegramBot:
                 side = trade["side"]
                 pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
                 total_pnl += pnl
-                total_cost += entry_px * size
                 await close_trade(trade["id"], pnl, "MANUAL")
                 direction_emoji = "🟢" if side == "LONG" else "🔴"
                 pnl_sign = "+" if pnl >= 0 else ""
-                pnl_pct = (pnl / (entry_px * size)) * 100 if entry_px > 0 and size > 0 else 0
+                pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
                 pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
                 lines.append(
                     f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n"
@@ -418,7 +419,8 @@ class TelegramBot:
             await self._cancel_oids(coin, oids)
 
         total_sign = "+" if total_pnl >= 0 else ""
-        total_pct_str = f" ({total_sign}{total_pnl / total_cost * 100:.2f}%)" if total_cost > 0 else ""
+        total_pct = (total_pnl / equity * 100) if equity > 0 else 0
+        total_pct_str = f" ({total_sign}{total_pct:.2f}%)"
         lines.append(f"💰 Total PnL: {_b(f'{total_sign}${total_pnl:,.2f}{total_pct_str}')}")
         await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
