@@ -132,10 +132,12 @@ async def _validate_and_size(
         return mark_price, 0, 0, leverage, "zero size"
     notional = size * mark_price
     if notional < 10.0:
-        logger.warning(
-            f"Below $10 minimum notional (${notional:.2f}) — skipping | coin={coin}"
+        min_size = round(10.0 / mark_price + 10 ** (-sz_decimals), sz_decimals)
+        logger.info(
+            f"Position bumped to $10 min | coin={coin}"
+            f" | original=${notional:.2f} | new_size={min_size}"
         )
-        return mark_price, 0, 0, leverage, f"below $10 min (${notional:.2f})"
+        size = min_size
     return mark_price, size, equity, leverage, ""
 
 
