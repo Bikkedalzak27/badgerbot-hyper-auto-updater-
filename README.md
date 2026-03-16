@@ -185,3 +185,15 @@ tmux new -s hyperbot
 ```
 
 Opens 3 small ETH LONG positions with TP/SL on Hyperliquid to verify the full flow.
+
+## Changelog
+
+**v0.2 — March 2026**
+
+- Risk-based position sizing (`RISK_PCT`): each trade sized so SL hit = exactly X% portfolio loss, with 3-second signal batching to split risk across simultaneous entries
+- Fixed margin mode (`POSITION_SIZE_USD`): set a flat dollar margin per trade
+- $10 minimum notional bump: trades below Hyperliquid's minimum are bumped up instead of dropped
+- PnL percentages now show return on account equity (not trade notional)
+- Telegram command menu with autocomplete suggestions
+- `<code>` formatting on all dynamic values for visual contrast
+- SL close notifications use ⛔ emoji
