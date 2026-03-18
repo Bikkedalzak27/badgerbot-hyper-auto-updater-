@@ -457,7 +457,8 @@ class TelegramBot:
         total_pnl = sum(t["pnl"] or 0 for t in trades)
         from services.trade_executor import fetch_account_equity
         equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
-        total_pct = (total_pnl / equity * 100) if equity > 0 else 0
+        starting_equity = equity - total_pnl
+        total_pct = (total_pnl / starting_equity * 100) if starting_equity > 0 else 0
 
         avg_win = sum(t["pnl"] or 0 for t in wins) / len(wins) if wins else 0
         avg_loss = sum(t["pnl"] or 0 for t in losses) / len(losses) if losses else 0
