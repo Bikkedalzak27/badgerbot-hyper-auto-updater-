@@ -20,8 +20,8 @@ jobs:
       - name: Check imports
         run: |
           python -c "from config.settings import Settings, load_settings"
-          python -c "from services.trade_executor import TradeExecutor"
-          python -c "from services.signal_consumer import SignalConsumer"
-          python -c "from services.position_monitor import PositionMonitor"
-          python -c "from services.telegram_bot import TelegramBot"
-          python -c "from storage.trade_log import TradeLog"
+          python -c "from services.trade_executor import execute_signal, build_exchange"
+          python -c "from services.signal_consumer import parse_signal, validate_signal"
+          python -c "from services.position_monitor import run_position_monitor"
+          python -c "from services.telegram_bot import TelegramBot, BotState"
+          python -c "from storage.trade_log import insert_trade, update_trade_status"
