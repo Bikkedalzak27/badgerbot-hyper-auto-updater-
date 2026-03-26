@@ -1,0 +1,27 @@
+name: CI
+on: [push]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check syntax
+        run: python -m py_compile main.py
+
+      - name: Check imports
+        run: |
+          python -c "from config.settings import Settings, load_settings"
+          python -c "from services.trade_executor import TradeExecutor"
+          python -c "from services.signal_consumer import SignalConsumer"
+          python -c "from services.position_monitor import PositionMonitor"
+          python -c "from services.telegram_bot import TelegramBot"
+          python -c "from storage.trade_log import TradeLog"
