@@ -190,6 +190,7 @@ Opens 3 small ETH LONG positions with TP/SL on Hyperliquid to verify the full fl
 
 **v0.2.1 — March 28, 2026**
 
+- Auto-cancel orphaned TP/SL orders: when a TP fills, the corresponding SL is now cancelled automatically (and vice versa). Previously, counterpart orders accumulated on Hyperliquid indefinitely.
 - Exponential backoff on PositionMonitor fill retries: Hyperliquid API can delay reporting fill data after TP/SL triggers, previously causing hundreds of log warnings per incident. Now logs 5 entries in the first 2 minutes, then once per 30 minutes until resolved.
 - GitHub Actions CI: syntax and import checks run on every push
 
