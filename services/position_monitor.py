@@ -8,6 +8,9 @@ logger = logging.getLogger("PositionMonitor")
 
 _alerted_orphan_coins: set[str] = set()
 
+# {coin: {"count": int, "next_log_at": int}} — tracks fill retry backoff per coin
+_fill_retry_state: dict[str, dict] = {}
+
 
 def _extract_open_positions(user_state: dict) -> dict[str, float]:
     """Returns {coin: abs_size} for all coins with a non-zero open position."""
@@ -93,8 +96,18 @@ async def _process_coin_closures(
     close_fills = _get_close_fills(fills, coin, side, since_ms)
 
     if not close_fills:
-        logger.warning(f"{coin}: closure detected but no matching fills in user_fills — will retry next cycle")
+        state = _fill_retry_state.setdefault(coin, {"count": 0, "next_log_at": 0})
+        state["count"] += 1
+        if state["count"] >= state["next_log_at"]:
+            logger.warning(
+                f"{coin}: closure detected but no matching fills in user_fills"
+                f" — retry #{state['count']}, backing off"
+            )
+            # Log at: 0, 1, 2, 4, 8, then every ~112 cycles (~30min at 16s poll)
+            state["next_log_at"] = state["count"] + min(2 ** state["count"], 112)
         return
+
+    _fill_retry_state.pop(coin, None)
 
     pending_trades = list(db_trades)
 
