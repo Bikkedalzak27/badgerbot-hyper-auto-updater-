@@ -215,7 +215,7 @@ async def main() -> None:
     results = await asyncio.gather(
         connect_and_listen(signal_handler, settings, stop_event, notify=telegram_bot.send),
         telegram_bot.run(stop_event),
-        run_position_monitor(info, settings, telegram_bot.send, stop_event),
+        run_position_monitor(info, settings, telegram_bot.send, stop_event, exchange),
         return_exceptions=True,
     )
     for result in results:

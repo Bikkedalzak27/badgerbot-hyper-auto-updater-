@@ -2,6 +2,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from hyperliquid.exchange import Exchange
+from hyperliquid.info import Info
+
+from config.settings import Settings
 from storage.trade_log import close_trade, fetch_open_trades
 
 logger = logging.getLogger("PositionMonitor")
@@ -10,6 +14,51 @@ _alerted_orphan_coins: set[str] = set()
 
 # {coin: {"count": int, "next_log_at": int}} — tracks fill retry backoff per coin
 _fill_retry_state: dict[str, dict] = {}
+
+
+async def _cancel_counterpart_order(
+    exchange: Exchange, info: Info, settings: Settings,
+    trade: dict, close_status: str,
+) -> None:
+    """Cancel the orphaned TP or SL order after its counterpart was hit."""
+    # If TP was hit, cancel the SL. If SL was hit, cancel the TP.
+    if close_status == "TP":
+        target_px = float(trade["sl_px"])
+        label = "SL"
+    else:
+        target_px = float(trade["tp_px"])
+        label = "TP"
+
+    coin = trade["coin"]
+    size = float(trade["size"])
+
+    try:
+        orders = await asyncio.to_thread(
+            info.frontend_open_orders, settings.hl_account_address
+        )
+    except Exception as error:
+        logger.warning(f"Failed to fetch open orders for {label} cancel | {error}")
+        return
+
+    # Match by coin, trigger price (within 0.1%), and size (within 1%)
+    for order in orders:
+        if order.get("coin") != coin:
+            continue
+        trigger = float(order.get("triggerPx", 0))
+        order_sz = float(order.get("sz", 0))
+        if abs(trigger - target_px) / target_px < 0.001 and abs(order_sz - size) / size < 0.01:
+            oid = order.get("oid")
+            try:
+                result = await asyncio.to_thread(exchange.cancel, coin, oid)
+                if result.get("status") == "ok":
+                    logger.info(f"Cancelled orphaned {label} | coin={coin} | oid={oid} | trigger={trigger}")
+                else:
+                    logger.warning(f"Cancel {label} returned non-ok | coin={coin} | result={result}")
+            except Exception as error:
+                logger.warning(f"Failed to cancel {label} | coin={coin} | oid={oid} | {error}")
+            return
+
+    logger.info(f"No matching {label} order found to cancel | coin={coin} | target_px={target_px}")
 
 
 def _extract_open_positions(user_state: dict) -> dict[str, float]:
@@ -84,7 +133,8 @@ def _format_close_notification(trade: dict, close_px: float, pnl: float, status:
 
 
 async def _process_coin_closures(
-    coin: str, db_trades: list[dict], fills: list, notify, equity: float
+    coin: str, db_trades: list[dict], fills: list, notify, equity: float,
+    exchange: Exchange, info: Info, settings: Settings,
 ) -> None:
     """Match close fills to DB trades and close each one individually."""
     side = db_trades[0]["side"]
@@ -131,9 +181,10 @@ async def _process_coin_closures(
             f" | entry={trade['entry_px']} exit={fill_px} pnl={pnl:+.2f}"
         )
         await notify(_format_close_notification(trade, fill_px, pnl, status, equity))
+        await _cancel_counterpart_order(exchange, info, settings, trade, status)
 
 
-async def _check_closed_positions(info, settings, notify) -> None:
+async def _check_closed_positions(info, settings, notify, exchange) -> None:
     open_trades = await fetch_open_trades()
     if not open_trades:
         return
@@ -165,7 +216,7 @@ async def _check_closed_positions(info, settings, notify) -> None:
             f" hl_size={current_hl_size:.6f} closed={closed_amount:.6f}"
         )
         fills = await asyncio.to_thread(info.user_fills, settings.hl_account_address)
-        await _process_coin_closures(coin, db_trades, fills, notify, equity)
+        await _process_coin_closures(coin, db_trades, fills, notify, equity, exchange, info, settings)
 
     for coin, hl_size in hl_positions.items():
         if coin not in trades_by_coin and coin not in _alerted_orphan_coins:
@@ -175,12 +226,12 @@ async def _check_closed_positions(info, settings, notify) -> None:
             await notify(msg)
 
 
-async def run_position_monitor(info, settings, notify, stop_event: asyncio.Event) -> None:
+async def run_position_monitor(info, settings, notify, stop_event: asyncio.Event, exchange: Exchange = None) -> None:
     logger.info(f"Started — polling every {settings.position_poll_interval_seconds}s")
 
     while not stop_event.is_set():
         try:
-            await _check_closed_positions(info, settings, notify)
+            await _check_closed_positions(info, settings, notify, exchange)
         except Exception as error:
             logger.error(f"Poll cycle error: {error}", exc_info=True)
 
