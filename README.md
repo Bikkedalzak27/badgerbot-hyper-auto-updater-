@@ -188,6 +188,10 @@ Opens 3 small ETH LONG positions with TP/SL on Hyperliquid to verify the full fl
 
 ## Changelog
 
+**v0.2.2 — March 28, 2026**
+
+- Auto-close residual positions: when all TP/SL orders for a coin have filled but a small position remains due to size rounding across multiple trades, PositionMonitor now detects the orphaned remainder and closes it automatically via `market_close`
+
 **v0.2.1 — March 28, 2026**
 
 - Auto-cancel orphaned TP/SL orders: when a TP fills, the corresponding SL is now cancelled automatically (and vice versa). Previously, counterpart orders accumulated on Hyperliquid indefinitely.

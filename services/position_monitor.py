@@ -184,14 +184,51 @@ async def _process_coin_closures(
         await _cancel_counterpart_order(exchange, info, settings, trade, status)
 
 
+async def _close_residual_position(
+    exchange: Exchange, info: Info, settings: Settings,
+    coin: str, residual_size: float, notify,
+) -> None:
+    """Auto-close a residual position left by rounding across multiple TP/SL fills."""
+    logger.info(f"Closing residual position | coin={coin} | size={residual_size}")
+    try:
+        result = await asyncio.to_thread(exchange.market_close, coin, slippage=0.02)
+        if result.get("status") != "ok":
+            logger.error(f"Residual close failed | coin={coin} | result={result}")
+            await notify(
+                f"⚠️ Residual {coin} position (<code>{residual_size}</code>) "
+                f"could not be closed — close manually"
+            )
+            return
+        fill_info = result.get("response", {}).get("data", {}).get("statuses", [{}])[0]
+        close_px = float(fill_info.get("filled", {}).get("avgPx", 0))
+        notional = residual_size * close_px
+        logger.info(
+            f"Residual closed | coin={coin} | size={residual_size}"
+            f" | exit={close_px} | notional=${notional:.2f}"
+        )
+        await notify(
+            f"🧹 {coin} residual closed @ <code>${close_px:,.2f}</code>\n"
+            f"📐 Size: <code>{residual_size} (${notional:,.2f})</code>\n"
+            f"ℹ️ Rounding remainder after all TP/SL fills"
+        )
+    except Exception as error:
+        logger.error(f"Residual close exception | coin={coin} | {error}")
+        await notify(
+            f"⚠️ Residual {coin} position (<code>{residual_size}</code>) "
+            f"close failed — <code>{error}</code>"
+        )
+
+
 async def _check_closed_positions(info, settings, notify, exchange) -> None:
     open_trades = await fetch_open_trades()
-    if not open_trades:
-        return
 
     user_state = await asyncio.to_thread(info.user_state, settings.hl_account_address)
-    spot_state = await asyncio.to_thread(info.spot_user_state, settings.hl_account_address)
     hl_positions = _extract_open_positions(user_state)
+
+    if not open_trades and not hl_positions:
+        return
+
+    spot_state = await asyncio.to_thread(info.spot_user_state, settings.hl_account_address)
     perps_equity = float(user_state.get("marginSummary", {}).get("accountValue", 0))
     spot_usdc = next(
         (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
@@ -218,8 +255,20 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
         fills = await asyncio.to_thread(info.user_fills, settings.hl_account_address)
         await _process_coin_closures(coin, db_trades, fills, notify, equity, exchange, info, settings)
 
+    # Close residual positions left by rounding mismatches across multiple TP/SL fills.
+    # Re-fetch open trades since _process_coin_closures may have closed some.
+    remaining_trades = await fetch_open_trades()
+    remaining_coins = {t["coin"] for t in remaining_trades}
+
     for coin, hl_size in hl_positions.items():
-        if coin not in trades_by_coin and coin not in _alerted_orphan_coins:
+        if coin in remaining_coins:
+            continue
+        if coin in trades_by_coin:
+            # All DB trades for this coin just closed, but HL position persists — residual.
+            await _close_residual_position(
+                exchange, info, settings, coin, hl_size, notify
+            )
+        elif coin not in _alerted_orphan_coins:
             _alerted_orphan_coins.add(coin)
             msg = f"Untracked position: {coin} size=<code>{hl_size}</code> — no DB record. Close manually or wait for next signal."
             logger.warning(msg)
