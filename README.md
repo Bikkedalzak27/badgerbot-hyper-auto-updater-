@@ -188,6 +188,12 @@ Opens 3 small ETH LONG positions with TP/SL on Hyperliquid to verify the full fl
 
 ## Changelog
 
+**v0.3 — March 30, 2026**
+
+- Net PnL tracking: trading fees (entry + close) are now stored per trade in the database. All PnL values in Telegram (/stats, /history, /close, close notifications) show net PnL after fees.
+- Existing TP/SL trades backfilled with estimated 0.025% taker fee. Entry fees captured automatically on new trades via fire-and-forget fill lookup.
+- Close fee captured from HL fill data on both auto-close (TP/SL) and manual close paths.
+
 **v0.2.3 — March 30, 2026**
 
 - Sweep-cancel orphaned trigger orders: after closing a residual position, all remaining TP/SL orders for that coin are bulk-cancelled. Prevents stale SL orders from flipping the position when many TPs fire simultaneously.
