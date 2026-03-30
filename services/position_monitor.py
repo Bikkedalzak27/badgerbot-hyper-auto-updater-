@@ -17,8 +17,11 @@ _fill_retry_state: dict[str, dict] = {}
 
 
 async def _cancel_counterpart_order(
-    exchange: Exchange, info: Info, settings: Settings,
-    trade: dict, close_status: str,
+    exchange: Exchange,
+    info: Info,
+    settings: Settings,
+    trade: dict,
+    close_status: str,
 ) -> None:
     """Cancel the orphaned TP or SL order after its counterpart was hit."""
     # If TP was hit, cancel the SL. If SL was hit, cancel the TP.
@@ -46,19 +49,30 @@ async def _cancel_counterpart_order(
             continue
         trigger = float(order.get("triggerPx", 0))
         order_sz = float(order.get("sz", 0))
-        if abs(trigger - target_px) / target_px < 0.001 and abs(order_sz - size) / size < 0.01:
+        if (
+            abs(trigger - target_px) / target_px < 0.001
+            and abs(order_sz - size) / size < 0.01
+        ):
             oid = order.get("oid")
             try:
                 result = await asyncio.to_thread(exchange.cancel, coin, oid)
                 if result.get("status") == "ok":
-                    logger.info(f"Cancelled orphaned {label} | coin={coin} | oid={oid} | trigger={trigger}")
+                    logger.info(
+                        f"Cancelled orphaned {label} | coin={coin} | oid={oid} | trigger={trigger}"
+                    )
                 else:
-                    logger.warning(f"Cancel {label} returned non-ok | coin={coin} | result={result}")
+                    logger.warning(
+                        f"Cancel {label} returned non-ok | coin={coin} | result={result}"
+                    )
             except Exception as error:
-                logger.warning(f"Failed to cancel {label} | coin={coin} | oid={oid} | {error}")
+                logger.warning(
+                    f"Failed to cancel {label} | coin={coin} | oid={oid} | {error}"
+                )
             return
 
-    logger.info(f"No matching {label} order found to cancel | coin={coin} | target_px={target_px}")
+    logger.info(
+        f"No matching {label} order found to cancel | coin={coin} | target_px={target_px}"
+    )
 
 
 def _extract_open_positions(user_state: dict) -> dict[str, float]:
@@ -77,7 +91,8 @@ def _get_close_fills(fills: list, coin: str, side: str, since_ms: float) -> list
     """Returns close fills for a coin after since_ms, sorted oldest-first."""
     expected_dir = "Close Long" if side == "LONG" else "Close Short"
     matching = [
-        f for f in fills
+        f
+        for f in fills
         if f.get("coin") == coin
         and f.get("time", 0) > since_ms
         and expected_dir in f.get("dir", "")
@@ -115,7 +130,9 @@ def _determine_close_status(trade: dict, close_px: float) -> str:
         return "TP" if close_px <= midpoint else "SL"
 
 
-def _format_close_notification(trade: dict, close_px: float, pnl: float, status: str, equity: float) -> str:
+def _format_close_notification(
+    trade: dict, close_px: float, pnl: float, status: str, equity: float
+) -> str:
     entry_px = float(trade["entry_px"])
     size = float(trade["size"])
     side = trade["side"]
@@ -133,13 +150,20 @@ def _format_close_notification(trade: dict, close_px: float, pnl: float, status:
 
 
 async def _process_coin_closures(
-    coin: str, db_trades: list[dict], fills: list, notify, equity: float,
-    exchange: Exchange, info: Info, settings: Settings,
+    coin: str,
+    db_trades: list[dict],
+    fills: list,
+    notify,
+    equity: float,
+    exchange: Exchange,
+    info: Info,
+    settings: Settings,
 ) -> None:
     """Match close fills to DB trades and close each one individually."""
     side = db_trades[0]["side"]
     since_ms = min(
-        datetime.fromisoformat(t["opened_at"]).replace(tzinfo=timezone.utc).timestamp() * 1000
+        datetime.fromisoformat(t["opened_at"]).replace(tzinfo=timezone.utc).timestamp()
+        * 1000
         for t in db_trades
     )
 
@@ -184,9 +208,44 @@ async def _process_coin_closures(
         await _cancel_counterpart_order(exchange, info, settings, trade, status)
 
 
+async def _sweep_cancel_orders(
+    exchange: Exchange,
+    info: Info,
+    settings: Settings,
+    coin: str,
+) -> None:
+    """Cancel all remaining trigger orders for a coin after position is fully closed."""
+    try:
+        orders = await asyncio.to_thread(
+            info.frontend_open_orders, settings.hl_account_address
+        )
+    except Exception as error:
+        logger.warning(f"Sweep cancel: failed to fetch orders | coin={coin} | {error}")
+        return
+
+    coin_orders = [o for o in orders if o.get("coin") == coin and o.get("triggerPx")]
+    if not coin_orders:
+        return
+
+    cancel_list = [{"coin": coin, "oid": o["oid"]} for o in coin_orders]
+    try:
+        result = await asyncio.to_thread(exchange.bulk_cancel, cancel_list)
+        statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+        cancelled = sum(1 for s in statuses if s == "success")
+        logger.info(
+            f"Sweep cancelled {cancelled}/{len(cancel_list)} orphaned orders | coin={coin}"
+        )
+    except Exception as error:
+        logger.warning(f"Sweep cancel failed | coin={coin} | {error}")
+
+
 async def _close_residual_position(
-    exchange: Exchange, info: Info, settings: Settings,
-    coin: str, residual_size: float, notify,
+    exchange: Exchange,
+    info: Info,
+    settings: Settings,
+    coin: str,
+    residual_size: float,
+    notify,
 ) -> None:
     """Auto-close a residual position left by rounding across multiple TP/SL fills."""
     logger.info(f"Closing residual position | coin={coin} | size={residual_size}")
@@ -211,6 +270,8 @@ async def _close_residual_position(
             f"📐 Size: <code>{residual_size} (${notional:,.2f})</code>\n"
             f"ℹ️ Rounding remainder after all TP/SL fills"
         )
+        # Sweep-cancel any orphaned trigger orders for this coin.
+        await _sweep_cancel_orders(exchange, info, settings, coin)
     except Exception as error:
         logger.error(f"Residual close exception | coin={coin} | {error}")
         await notify(
@@ -228,10 +289,16 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
     if not open_trades and not hl_positions:
         return
 
-    spot_state = await asyncio.to_thread(info.spot_user_state, settings.hl_account_address)
+    spot_state = await asyncio.to_thread(
+        info.spot_user_state, settings.hl_account_address
+    )
     perps_equity = float(user_state.get("marginSummary", {}).get("accountValue", 0))
     spot_usdc = next(
-        (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
+        (
+            float(b["total"])
+            for b in spot_state.get("balances", [])
+            if b["coin"] == "USDC"
+        ),
         0.0,
     )
     equity = max(perps_equity, spot_usdc)
@@ -253,7 +320,9 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
             f" hl_size={current_hl_size:.6f} closed={closed_amount:.6f}"
         )
         fills = await asyncio.to_thread(info.user_fills, settings.hl_account_address)
-        await _process_coin_closures(coin, db_trades, fills, notify, equity, exchange, info, settings)
+        await _process_coin_closures(
+            coin, db_trades, fills, notify, equity, exchange, info, settings
+        )
 
     # Close residual positions left by rounding mismatches across multiple TP/SL fills.
     # Re-fetch open trades since _process_coin_closures may have closed some.
@@ -275,7 +344,9 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
             await notify(msg)
 
 
-async def run_position_monitor(info, settings, notify, stop_event: asyncio.Event, exchange: Exchange = None) -> None:
+async def run_position_monitor(
+    info, settings, notify, stop_event: asyncio.Event, exchange: Exchange = None
+) -> None:
     logger.info(f"Started — polling every {settings.position_poll_interval_seconds}s")
 
     while not stop_event.is_set():

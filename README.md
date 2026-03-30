@@ -188,6 +188,10 @@ Opens 3 small ETH LONG positions with TP/SL on Hyperliquid to verify the full fl
 
 ## Changelog
 
+**v0.2.3 — March 30, 2026**
+
+- Sweep-cancel orphaned trigger orders: after closing a residual position, all remaining TP/SL orders for that coin are bulk-cancelled. Prevents stale SL orders from flipping the position when many TPs fire simultaneously.
+
 **v0.2.2 — March 28, 2026**
 
 - Auto-close residual positions: when all TP/SL orders for a coin have filled but a small position remains due to size rounding across multiple trades, PositionMonitor now detects the orphaned remainder and closes it automatically via `market_close`
