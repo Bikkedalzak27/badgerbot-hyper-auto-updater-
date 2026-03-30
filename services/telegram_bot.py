@@ -15,6 +15,7 @@ from storage.trade_log import (
     fetch_closed_trades_since,
     fetch_open_trades,
     fetch_recent_closed_trades,
+    net_pnl,
 )
 
 logger = logging.getLogger("TelegramBot")
