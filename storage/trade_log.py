@@ -17,18 +17,44 @@ CREATE TABLE IF NOT EXISTS trades (
     opened_at   TEXT NOT NULL,
     closed_at   TEXT,
     pnl         REAL,
-    status      TEXT NOT NULL DEFAULT 'OPEN'
+    status      TEXT NOT NULL DEFAULT 'OPEN',
+    entry_fee   REAL,
+    close_fee   REAL
 )
 """
+
+_TAKER_FEE_RATE = 0.00025  # 0.025% standard HL taker fee
 
 
 def _init_schema() -> None:
     connection = sqlite3.connect(str(DB_PATH))
     try:
         connection.execute(_CREATE_TRADES_TABLE)
+        for col in ("entry_fee", "close_fee"):
+            try:
+                connection.execute(f"ALTER TABLE trades ADD COLUMN {col} REAL")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        _backfill_fees(connection)
         connection.commit()
     finally:
         connection.close()
+
+
+def _backfill_fees(connection: sqlite3.Connection) -> None:
+    """Estimate fees for existing trades that have NULL fee columns."""
+    connection.execute(
+        "UPDATE trades SET entry_fee = size * entry_px * ? "
+        "WHERE entry_fee IS NULL AND status NOT IN ('OPEN', 'UNPROTECTED')",
+        (_TAKER_FEE_RATE,),
+    )
+    connection.execute(
+        "UPDATE trades SET close_fee = size * "
+        "CASE WHEN status = 'TP' THEN tp_px "
+        "     WHEN status = 'SL' THEN sl_px END * ? "
+        "WHERE close_fee IS NULL AND status IN ('TP', 'SL')",
+        (_TAKER_FEE_RATE,),
+    )
 
 
 async def init_trade_log() -> None:
@@ -55,13 +81,17 @@ def _insert_trade(
 async def insert_trade(
     coin: str, side: str, size: float, entry_px: float, tp_px: float, sl_px: float
 ) -> int:
-    return await asyncio.to_thread(_insert_trade, coin, side, size, entry_px, tp_px, sl_px)
+    return await asyncio.to_thread(
+        _insert_trade, coin, side, size, entry_px, tp_px, sl_px
+    )
 
 
 def _update_trade_status(trade_id: int, status: str) -> None:
     connection = sqlite3.connect(str(DB_PATH))
     try:
-        connection.execute("UPDATE trades SET status = ? WHERE id = ?", (status, trade_id))
+        connection.execute(
+            "UPDATE trades SET status = ? WHERE id = ?", (status, trade_id)
+        )
         connection.commit()
     finally:
         connection.close()
@@ -87,21 +117,48 @@ async def repair_trade_tpsl(trade_id: int, tp_px: float, sl_px: float) -> None:
     await asyncio.to_thread(_repair_trade_tpsl, trade_id, tp_px, sl_px)
 
 
-def _close_trade(trade_id: int, pnl: float, status: str) -> None:
+def _close_trade(
+    trade_id: int, pnl: float, status: str, close_fee: float | None = None
+) -> None:
     closed_at = datetime.now(timezone.utc).isoformat()
     connection = sqlite3.connect(str(DB_PATH))
     try:
         connection.execute(
-            "UPDATE trades SET closed_at = ?, pnl = ?, status = ? WHERE id = ?",
-            (closed_at, pnl, status, trade_id),
+            "UPDATE trades SET closed_at = ?, pnl = ?, status = ?, close_fee = ? WHERE id = ?",
+            (closed_at, pnl, status, close_fee, trade_id),
         )
         connection.commit()
     finally:
         connection.close()
 
 
-async def close_trade(trade_id: int, pnl: float, status: str) -> None:
-    await asyncio.to_thread(_close_trade, trade_id, pnl, status)
+async def close_trade(
+    trade_id: int, pnl: float, status: str, close_fee: float | None = None
+) -> None:
+    await asyncio.to_thread(_close_trade, trade_id, pnl, status, close_fee)
+
+
+def _update_entry_fee(trade_id: int, entry_fee: float) -> None:
+    connection = sqlite3.connect(str(DB_PATH))
+    try:
+        connection.execute(
+            "UPDATE trades SET entry_fee = ? WHERE id = ?", (entry_fee, trade_id)
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+async def update_entry_fee(trade_id: int, entry_fee: float) -> None:
+    await asyncio.to_thread(_update_entry_fee, trade_id, entry_fee)
+
+
+def net_pnl(trade: dict) -> float | None:
+    """Compute net PnL: gross pnl minus entry and close fees."""
+    pnl = trade.get("pnl")
+    if pnl is None:
+        return None
+    return pnl - (trade.get("entry_fee") or 0) - (trade.get("close_fee") or 0)
 
 
 def _fetch_open_trades() -> list[dict]:

@@ -10,7 +10,12 @@ from config.settings import Settings
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from services.signal_consumer import signal_log
-from storage.trade_log import close_trade, fetch_closed_trades_since, fetch_open_trades, fetch_recent_closed_trades
+from storage.trade_log import (
+    close_trade,
+    fetch_closed_trades_since,
+    fetch_open_trades,
+    fetch_recent_closed_trades,
+)
 
 logger = logging.getLogger("TelegramBot")
 
@@ -29,8 +34,14 @@ class BotState:
 
 
 class TelegramBot:
-    def __init__(self, settings: Settings, info: Info, exchange: Exchange, bot_state: BotState,
-                 leverage_config: dict | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        info: Info,
+        exchange: Exchange,
+        bot_state: BotState,
+        leverage_config: dict | None = None,
+    ) -> None:
         self._settings = settings
         self._info = info
         self._exchange = exchange
@@ -70,12 +81,17 @@ class TelegramBot:
         except Exception as error:
             logger.error(f"Telegram send failed: {error}")
 
-    async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_status(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
-        user_state = await asyncio.to_thread(self._info.user_state, self._settings.hl_account_address)
+        user_state = await asyncio.to_thread(
+            self._info.user_state, self._settings.hl_account_address
+        )
         open_positions = [
-            p["position"] for p in user_state.get("assetPositions", [])
+            p["position"]
+            for p in user_state.get("assetPositions", [])
             if float(p.get("position", {}).get("szi", 0)) != 0
         ]
 
@@ -89,9 +105,13 @@ class TelegramBot:
                     if b["coin"] == "USDC":
                         withdrawable = float(b["total"])
                         break
-            lev = self._leverage_config.get("ETH", self._leverage_config.get("DEFAULT", 3))
+            lev = self._leverage_config.get(
+                "ETH", self._leverage_config.get("DEFAULT", 3)
+            )
             if self._settings.risk_pct is not None:
-                risk_label = f"{self._settings.risk_pct * 100:.1f}% risk per entry price"
+                risk_label = (
+                    f"{self._settings.risk_pct * 100:.1f}% risk per entry price"
+                )
                 await update.message.reply_text(
                     f"No open positions.\n\n"
                     f"💰 Available: {_b(f'${withdrawable:,.2f}')}\n"
@@ -124,7 +144,10 @@ class TelegramBot:
             return
 
         from services.trade_executor import fetch_account_equity
-        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
+        equity = await fetch_account_equity(
+            self._info, self._settings.hl_account_address
+        )
 
         sections = []
         for pos in open_positions:
@@ -139,7 +162,9 @@ class TelegramBot:
             liq_str = f"${float(raw_liq):,.2f}" if raw_liq else "N/A"
             leverage_val = pos.get("leverage", {}).get("value")
             leverage_str = f"{leverage_val}x" if leverage_val else "N/A"
-            margin = position_value / float(leverage_val) if leverage_val else position_value
+            margin = (
+                position_value / float(leverage_val) if leverage_val else position_value
+            )
             upnl = float(pos.get("unrealizedPnl", 0))
             upnl_sign = "+" if upnl >= 0 else ""
             pnl_pct = (upnl / equity) * 100 if equity > 0 else 0
@@ -154,19 +179,25 @@ class TelegramBot:
             )
         await update.message.reply_text("\n\n".join(sections), parse_mode="HTML")
 
-    async def _cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_pause(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         self._bot_state.paused = True
         await update.message.reply_text("Bot paused. Signals will be ignored.")
 
-    async def _cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_resume(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         self._bot_state.paused = False
         await update.message.reply_text("Bot resumed. Listening for signals.")
 
-    async def _cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_history(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         trades = await fetch_recent_closed_trades(10)
@@ -175,15 +206,25 @@ class TelegramBot:
             return
         lines = []
         for t in trades:
-            pnl = t.get("pnl")
-            pnl_str = f"+${pnl:,.2f}" if pnl and pnl >= 0 else f"-${abs(pnl):,.2f}" if pnl else "N/A"
+            pnl = net_pnl(t)
+            pnl_str = (
+                f"+${pnl:,.2f}"
+                if pnl and pnl >= 0
+                else f"-${abs(pnl):,.2f}"
+                if pnl
+                else "N/A"
+            )
             entry = float(t["entry_px"])
             lines.append(
                 f"{t['coin']} {t['side']} | Entry {_b(f'${entry:,.2f}')} | {t['status']} | PnL {_b(pnl_str)}"
             )
-        await update.message.reply_text("Recent trades:\n" + "\n".join(lines), parse_mode="HTML")
+        await update.message.reply_text(
+            "Recent trades:\n" + "\n".join(lines), parse_mode="HTML"
+        )
 
-    async def _cmd_position(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_position(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         trades = await fetch_open_trades()
@@ -194,7 +235,9 @@ class TelegramBot:
         user_state, all_mids, spot_state = await asyncio.gather(
             asyncio.to_thread(self._info.user_state, self._settings.hl_account_address),
             asyncio.to_thread(self._info.all_mids),
-            asyncio.to_thread(self._info.spot_user_state, self._settings.hl_account_address),
+            asyncio.to_thread(
+                self._info.spot_user_state, self._settings.hl_account_address
+            ),
         )
 
         hl_positions = {}
@@ -207,7 +250,11 @@ class TelegramBot:
         margin = user_state.get("marginSummary", {})
         margin_used = float(margin.get("totalMarginUsed", 0))
         spot_usdc = next(
-            (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
+            (
+                float(b["total"])
+                for b in spot_state.get("balances", [])
+                if b["coin"] == "USDC"
+            ),
             0.0,
         )
         account_value = spot_usdc
@@ -224,7 +271,11 @@ class TelegramBot:
             direction_emoji = "🟢" if side == "LONG" else "🔴"
             hl_pos = hl_positions.get(coin, {})
 
-            total_size = abs(float(hl_pos["szi"])) if hl_pos else sum(float(t["size"]) for t in coin_trades)
+            total_size = (
+                abs(float(hl_pos["szi"]))
+                if hl_pos
+                else sum(float(t["size"]) for t in coin_trades)
+            )
             mark_px = float(all_mids.get(coin, 0))
             position_value = total_size * mark_px if mark_px else 0
             avg_entry = float(hl_pos.get("entryPx", 0)) if hl_pos else 0
@@ -256,11 +307,12 @@ class TelegramBot:
                 f"💵 Avg Entry: {_b(f'${avg_entry:,.2f}')}\n"
                 f"💀 Liq: {_b(liq_str)}\n"
                 f"⚡ Leverage: {_b(leverage_str)}\n"
-                f"🔛 Funding: {_b(funding_str)}\n"
-                + "\n".join(trade_rows)
+                f"🔛 Funding: {_b(funding_str)}\n" + "\n".join(trade_rows)
             )
 
-        total_upnl = sum(float(pos.get("unrealizedPnl", 0)) for pos in hl_positions.values())
+        total_upnl = sum(
+            float(pos.get("unrealizedPnl", 0)) for pos in hl_positions.values()
+        )
         upnl_sign = "+" if total_upnl >= 0 else ""
         upnl_pct = (total_upnl / account_value * 100) if account_value > 0 else 0
         upnl_pct_str = f" ({upnl_sign}{upnl_pct:.2f}%)"
@@ -271,9 +323,13 @@ class TelegramBot:
             f"🎢 Margin Used: {_b(f'${margin_used:,.2f} ({margin_pct:.1f}%)')}\n"
             f"💰 Available: {_b(f'${available:,.2f}')}"
         )
-        await update.message.reply_text("\n\n".join(sections) + footer, parse_mode="HTML")
+        await update.message.reply_text(
+            "\n\n".join(sections) + footer, parse_mode="HTML"
+        )
 
-    async def _cmd_close(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_close(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
 
@@ -292,11 +348,31 @@ class TelegramBot:
         else:
             index = int(args[0]) - 1
             if index < 0 or index >= len(open_trades):
-                await update.message.reply_text(f"Invalid number. Valid range: 1–{len(open_trades)}")
+                await update.message.reply_text(
+                    f"Invalid number. Valid range: 1–{len(open_trades)}"
+                )
                 return
             await self._close_single_trade(update, open_trades[index])
 
-    async def _fetch_tpsl_oids_by_price(self, coin: str, tp_px: float, sl_px: float) -> list[int]:
+    async def _fetch_recent_fill_fee(self, coin: str, fill_px: float = 0) -> float:
+        """Fetch the most recent close fill fee for a coin. Returns 0.0 on failure."""
+        try:
+            fills = await asyncio.to_thread(
+                self._info.user_fills, self._settings.hl_account_address
+            )
+            for fill in fills:
+                if fill.get("coin") != coin or "Close" not in fill.get("dir", ""):
+                    continue
+                if fill_px and abs(float(fill["px"]) - fill_px) / fill_px > 0.01:
+                    continue
+                return float(fill.get("fee", 0))
+        except Exception as error:
+            logger.warning(f"Failed to fetch fill fee for {coin}: {error}")
+        return 0.0
+
+    async def _fetch_tpsl_oids_by_price(
+        self, coin: str, tp_px: float, sl_px: float
+    ) -> list[int]:
         try:
             orders = await asyncio.to_thread(
                 self._info.frontend_open_orders, self._settings.hl_account_address
@@ -305,11 +381,14 @@ class TelegramBot:
             logger.error(f"Failed to fetch open orders for {coin}: {error}")
             return []
         return [
-            o["oid"] for o in orders
+            o["oid"]
+            for o in orders
             if o.get("coin") == coin
             and o.get("isTrigger")
-            and (_price_matches(float(o.get("triggerPx", 0)), tp_px)
-                 or _price_matches(float(o.get("triggerPx", 0)), sl_px))
+            and (
+                _price_matches(float(o.get("triggerPx", 0)), tp_px)
+                or _price_matches(float(o.get("triggerPx", 0)), sl_px)
+            )
         ]
 
     async def _fetch_all_trigger_oids(self, coin: str) -> list[int]:
@@ -320,7 +399,9 @@ class TelegramBot:
         except Exception as error:
             logger.error(f"Failed to fetch open orders for {coin}: {error}")
             return []
-        return [o["oid"] for o in orders if o.get("coin") == coin and o.get("isTrigger")]
+        return [
+            o["oid"] for o in orders if o.get("coin") == coin and o.get("isTrigger")
+        ]
 
     async def _cancel_oids(self, coin: str, oids: list[int]) -> None:
         if not oids:
@@ -332,7 +413,9 @@ class TelegramBot:
                 [{"coin": coin, "oid": oid} for oid in oids],
             )
             if result.get("status") == "ok":
-                logger.info(f"Cancelled {len(oids)} TP/SL order(s) for {coin} | oids={oids}")
+                logger.info(
+                    f"Cancelled {len(oids)} TP/SL order(s) for {coin} | oids={oids}"
+                )
             else:
                 logger.error(f"bulk_cancel failed for {coin}: {result}")
         except Exception as error:
@@ -348,14 +431,26 @@ class TelegramBot:
             result = await asyncio.to_thread(
                 self._exchange.market_close, coin, sz=size, slippage=0.02
             )
-            fill_px = float(result["response"]["data"]["statuses"][0]["filled"]["avgPx"])
+            fill_px = float(
+                result["response"]["data"]["statuses"][0]["filled"]["avgPx"]
+            )
         except Exception as error:
-            logger.error(f"Close order failed for trade {trade['id']} ({coin}): {error}")
-            await update.message.reply_text(f"Close order placed but could not confirm fill price for {coin}.")
+            logger.error(
+                f"Close order failed for trade {trade['id']} ({coin}): {error}"
+            )
+            await update.message.reply_text(
+                f"Close order placed but could not confirm fill price for {coin}."
+            )
             return
 
-        pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
-        await close_trade(trade["id"], pnl, "MANUAL")
+        pnl = (
+            (fill_px - entry_px) * size
+            if side == "LONG"
+            else (entry_px - fill_px) * size
+        )
+        close_fee = await self._fetch_recent_fill_fee(coin, fill_px)
+        entry_fee = float(trade.get("entry_fee") or 0)
+        await close_trade(trade["id"], pnl, "MANUAL", close_fee=close_fee)
 
         tp_px = float(trade["tp_px"])
         sl_px = float(trade["sl_px"])
@@ -363,22 +458,29 @@ class TelegramBot:
         await self._cancel_oids(coin, oids)
 
         from services.trade_executor import fetch_account_equity
-        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
+        equity = await fetch_account_equity(
+            self._info, self._settings.hl_account_address
+        )
         direction_emoji = "🟢" if side == "LONG" else "🔴"
-        pnl_sign = "+" if pnl >= 0 else ""
-        pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
+        net = pnl - entry_fee - close_fee
+        pnl_sign = "+" if net >= 0 else ""
+        pnl_pct = (net / equity) * 100 if equity > 0 else 0
         pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
         await update.message.reply_text(
             f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n\n"
             f"📐 Size: {_b(f'{size} (${size * fill_px:,.2f})')}\n"
             f"💵 Entry: {_b(f'${entry_px:,.2f}')} → Exit: {_b(f'${fill_px:,.2f}')}\n"
-            f"📈 PnL: {_b(f'{pnl_sign}${pnl:,.2f} ({pnl_pct_str})')}",
+            f"📈 PnL: {_b(f'{pnl_sign}${net:,.2f} ({pnl_pct_str})')}",
             parse_mode="HTML",
         )
 
     async def _close_all_trades(self, update: Update, open_trades: list) -> None:
         from services.trade_executor import fetch_account_equity
-        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
+        equity = await fetch_account_equity(
+            self._info, self._settings.hl_account_address
+        )
 
         coins_seen = {}
         for trade in open_trades:
@@ -391,28 +493,41 @@ class TelegramBot:
                 result = await asyncio.to_thread(
                     self._exchange.market_close, coin, slippage=0.02
                 )
-                fill_px = float(result["response"]["data"]["statuses"][0]["filled"]["avgPx"])
+                fill_px = float(
+                    result["response"]["data"]["statuses"][0]["filled"]["avgPx"]
+                )
             except Exception as error:
                 logger.error(f"Close all failed for {coin}: {error}")
                 lines.append(f"{coin} — close failed")
                 continue
 
+            total_close_fee = await self._fetch_recent_fill_fee(coin, fill_px)
+            total_size = sum(float(t["size"]) for t in trades)
             for trade in trades:
                 entry_px = float(trade["entry_px"])
                 size = float(trade["size"])
                 side = trade["side"]
-                pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
-                total_pnl += pnl
-                await close_trade(trade["id"], pnl, "MANUAL")
+                entry_fee = float(trade.get("entry_fee") or 0)
+                trade_close_fee = (
+                    total_close_fee * (size / total_size) if total_size else 0
+                )
+                pnl = (
+                    (fill_px - entry_px) * size
+                    if side == "LONG"
+                    else (entry_px - fill_px) * size
+                )
+                net = pnl - entry_fee - trade_close_fee
+                total_pnl += net
+                await close_trade(trade["id"], pnl, "MANUAL", close_fee=trade_close_fee)
                 direction_emoji = "🟢" if side == "LONG" else "🔴"
-                pnl_sign = "+" if pnl >= 0 else ""
-                pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
+                pnl_sign = "+" if net >= 0 else ""
+                pnl_pct = (net / equity) * 100 if equity > 0 else 0
                 pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
                 lines.append(
                     f"{direction_emoji} {coin} {side} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n"
                     f"📐 Size: {_b(f'{size} (${size * fill_px:,.2f})')}\n"
                     f"💵 Entry: {_b(f'${entry_px:,.2f}')} → Exit: {_b(f'${fill_px:,.2f}')}\n"
-                    f"📈 PnL: {_b(f'{pnl_sign}${pnl:,.2f} ({pnl_pct_str})')}"
+                    f"📈 PnL: {_b(f'{pnl_sign}${net:,.2f} ({pnl_pct_str})')}"
                 )
 
             oids = await self._fetch_all_trigger_oids(coin)
@@ -421,10 +536,14 @@ class TelegramBot:
         total_sign = "+" if total_pnl >= 0 else ""
         total_pct = (total_pnl / equity * 100) if equity > 0 else 0
         total_pct_str = f" ({total_sign}{total_pct:.2f}%)"
-        lines.append(f"💰 Total PnL: {_b(f'{total_sign}${total_pnl:,.2f}{total_pct_str}')}")
+        lines.append(
+            f"💰 Total PnL: {_b(f'{total_sign}${total_pnl:,.2f}{total_pct_str}')}"
+        )
         await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
-    async def _cmd_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_stats(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
 
@@ -441,7 +560,9 @@ class TelegramBot:
             since = None
             label = "All Time"
         else:
-            await update.message.reply_text("Usage: /stats or /stats week or /stats month")
+            await update.message.reply_text(
+                "Usage: /stats or /stats week or /stats month"
+            )
             return
 
         trades = await fetch_closed_trades_since(since)
@@ -450,21 +571,24 @@ class TelegramBot:
             return
 
         total = len(trades)
-        wins = [t for t in trades if (t["pnl"] or 0) >= 0]
-        losses = [t for t in trades if (t["pnl"] or 0) < 0]
+        wins = [t for t in trades if (net_pnl(t) or 0) >= 0]
+        losses = [t for t in trades if (net_pnl(t) or 0) < 0]
         win_rate = len(wins) / total * 100
 
-        total_pnl = sum(t["pnl"] or 0 for t in trades)
+        total_pnl = sum(net_pnl(t) or 0 for t in trades)
         from services.trade_executor import fetch_account_equity
-        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
+        equity = await fetch_account_equity(
+            self._info, self._settings.hl_account_address
+        )
         starting_equity = equity - total_pnl
         total_pct = (total_pnl / starting_equity * 100) if starting_equity > 0 else 0
 
-        avg_win = sum(t["pnl"] or 0 for t in wins) / len(wins) if wins else 0
-        avg_loss = sum(t["pnl"] or 0 for t in losses) / len(losses) if losses else 0
+        avg_win = sum(net_pnl(t) or 0 for t in wins) / len(wins) if wins else 0
+        avg_loss = sum(net_pnl(t) or 0 for t in losses) / len(losses) if losses else 0
 
-        best = max(trades, key=lambda t: t["pnl"] or 0)
-        worst = min(trades, key=lambda t: t["pnl"] or 0)
+        best = max(trades, key=lambda t: net_pnl(t) or 0)
+        worst = min(trades, key=lambda t: net_pnl(t) or 0)
 
         durations = []
         for t in trades:
@@ -484,9 +608,9 @@ class TelegramBot:
         pnl_sign = "+" if total_pnl >= 0 else ""
         pct_sign = "+" if total_pct >= 0 else ""
 
-        best_pnl = best["pnl"] or 0
+        best_pnl = net_pnl(best) or 0
         best_label = f"+${best_pnl:,.2f} ({best['coin']} {best['side']})"
-        worst_pnl = worst["pnl"] or 0
+        worst_pnl = net_pnl(worst) or 0
         worst_label = f"-${abs(worst_pnl):,.2f} ({worst['coin']} {worst['side']})"
 
         await update.message.reply_text(
@@ -502,7 +626,9 @@ class TelegramBot:
             parse_mode="HTML",
         )
 
-    async def _cmd_signal(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_signal(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         if not signal_log:
@@ -521,13 +647,17 @@ class TelegramBot:
             else:
                 icon = "❌"
                 detail = _b(entry.get("reason", ""))
-            lines.append(f"{icon} {entry.get('coin', '?')} {entry.get('side', '?')} — {detail}")
+            lines.append(
+                f"{icon} {entry.get('coin', '?')} {entry.get('side', '?')} — {detail}"
+            )
         await update.message.reply_text(
             f"📡 Signal Log (last {_b(len(lines))})\n\n" + "\n".join(lines),
             parse_mode="HTML",
         )
 
-    async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _cmd_help(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not self._is_authorized(update):
             return
         await update.message.reply_text(
@@ -544,17 +674,19 @@ class TelegramBot:
 
     async def run(self, stop_event: asyncio.Event) -> None:
         async with self._app:
-            await self._app.bot.set_my_commands([
-                BotCommand("status", "📊 Open positions or balance"),
-                BotCommand("position", "📋 Trade records with TP/SL"),
-                BotCommand("history", "📜 Last 10 closed trades"),
-                BotCommand("stats", "📈 Performance dashboard"),
-                BotCommand("signal", "📡 Recent signal log"),
-                BotCommand("close", "🔒 Close trade or all positions"),
-                BotCommand("pause", "⏸ Stop processing signals"),
-                BotCommand("resume", "▶️ Resume processing signals"),
-                BotCommand("help", "❓ List all commands"),
-            ])
+            await self._app.bot.set_my_commands(
+                [
+                    BotCommand("status", "📊 Open positions or balance"),
+                    BotCommand("position", "📋 Trade records with TP/SL"),
+                    BotCommand("history", "📜 Last 10 closed trades"),
+                    BotCommand("stats", "📈 Performance dashboard"),
+                    BotCommand("signal", "📡 Recent signal log"),
+                    BotCommand("close", "🔒 Close trade or all positions"),
+                    BotCommand("pause", "⏸ Stop processing signals"),
+                    BotCommand("resume", "▶️ Resume processing signals"),
+                    BotCommand("help", "❓ List all commands"),
+                ]
+            )
             await self._app.start()
             await self._app.updater.start_polling(drop_pending_updates=True)
             logger.info("Telegram bot polling started.")

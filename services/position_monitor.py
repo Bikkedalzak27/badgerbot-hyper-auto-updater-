@@ -115,6 +115,27 @@ def _find_matching_trade(open_trades: list[dict], fill_px: float) -> dict | None
     return best_trade
 
 
+def _find_entry_fee(fills: list, coin: str, trade: dict) -> float | None:
+    """Find the entry fill fee for a trade by matching coin, direction, and time."""
+    expected_dir = "Open Long" if trade["side"] == "LONG" else "Open Short"
+    opened_ms = (
+        datetime.fromisoformat(trade["opened_at"])
+        .replace(tzinfo=timezone.utc)
+        .timestamp()
+        * 1000
+    )
+    entry_px = float(trade["entry_px"])
+    for fill in fills:
+        if fill.get("coin") != coin or expected_dir not in fill.get("dir", ""):
+            continue
+        if abs(fill["time"] - opened_ms) > 60_000:
+            continue
+        if abs(float(fill["px"]) - entry_px) / entry_px > 0.01:
+            continue
+        return float(fill.get("fee", 0))
+    return None
+
+
 def _determine_close_status(trade: dict, close_px: float) -> str:
     tp_px = float(trade["tp_px"])
     sl_px = float(trade["sl_px"])
@@ -131,21 +152,28 @@ def _determine_close_status(trade: dict, close_px: float) -> str:
 
 
 def _format_close_notification(
-    trade: dict, close_px: float, pnl: float, status: str, equity: float
+    trade: dict,
+    close_px: float,
+    pnl: float,
+    status: str,
+    equity: float,
+    entry_fee: float = 0,
+    close_fee: float = 0,
 ) -> str:
     entry_px = float(trade["entry_px"])
     size = float(trade["size"])
     side = trade["side"]
     direction_emoji = "⛔" if status == "SL" else ("🟢" if side == "LONG" else "🔴")
-    pnl_sign = "+" if pnl >= 0 else ""
-    pnl_pct = (pnl / equity) * 100 if equity > 0 else 0
+    net = pnl - entry_fee - close_fee
+    pnl_sign = "+" if net >= 0 else ""
+    pnl_pct = (net / equity) * 100 if equity > 0 else 0
     pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
 
     return (
         f"{direction_emoji} {trade['coin']} {side} CLOSED — {status} @ <code>${close_px:,.2f}</code>\n\n"
         f"📐 Size: <code>{size} (${size * close_px:,.2f})</code>\n"
         f"💵 Entry: <code>${entry_px:,.2f}</code> → Exit: <code>${close_px:,.2f}</code>\n"
-        f"📈 PnL: <code>{pnl_sign}${pnl:,.2f} ({pnl_pct_str})</code>"
+        f"📈 PnL: <code>{pnl_sign}${net:,.2f} ({pnl_pct_str})</code>"
     )
 
 
@@ -191,20 +219,33 @@ async def _process_coin_closures(
 
         fill_px = float(fill["px"])
         pnl = float(fill.get("closedPnl", 0))
+        close_fee = float(fill.get("fee", 0))
 
         trade = _find_matching_trade(pending_trades, fill_px)
         if trade is None:
             break
 
+        entry_fee = float(trade.get("entry_fee") or 0)
+        if trade.get("entry_fee") is None:
+            found_fee = _find_entry_fee(fills, coin, trade)
+            if found_fee is not None:
+                entry_fee = found_fee
+                await update_entry_fee(trade["id"], found_fee)
+
         status = _determine_close_status(trade, fill_px)
-        await close_trade(trade["id"], pnl, status)
+        await close_trade(trade["id"], pnl, status, close_fee=close_fee)
         pending_trades.remove(trade)
 
+        net = pnl - entry_fee - close_fee
         logger.info(
             f"{coin} {side} closed | status={status}"
-            f" | entry={trade['entry_px']} exit={fill_px} pnl={pnl:+.2f}"
+            f" | entry={trade['entry_px']} exit={fill_px} pnl={pnl:+.2f} net={net:+.2f}"
         )
-        await notify(_format_close_notification(trade, fill_px, pnl, status, equity))
+        await notify(
+            _format_close_notification(
+                trade, fill_px, pnl, status, equity, entry_fee, close_fee
+            )
+        )
         await _cancel_counterpart_order(exchange, info, settings, trade, status)
 
 

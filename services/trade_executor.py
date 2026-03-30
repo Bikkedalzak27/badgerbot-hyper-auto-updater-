@@ -28,7 +28,11 @@ def load_leverage_config() -> dict:
 
 
 def build_exchange(settings: Settings) -> Exchange:
-    api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
+    api_url = (
+        constants.TESTNET_API_URL
+        if settings.hl_use_testnet
+        else constants.MAINNET_API_URL
+    )
     wallet = eth_account.Account.from_key(settings.hl_api_private_key)
     # account_address required — without it Exchange uses API wallet address (empty account)
     return Exchange(wallet, api_url, account_address=settings.hl_account_address)
@@ -79,8 +83,12 @@ def calculate_position_size(
 
 
 def calculate_risk_size(
-    equity: float, risk_pct: float, entry_price: float,
-    sl_price: float, batch_size: int, sz_decimals: int,
+    equity: float,
+    risk_pct: float,
+    entry_price: float,
+    sl_price: float,
+    batch_size: int,
+    sz_decimals: int,
 ) -> float:
     risk_per_signal = equity * risk_pct / batch_size
     price_distance = abs(entry_price - sl_price)
@@ -90,7 +98,10 @@ def calculate_risk_size(
 
 
 async def _validate_and_size(
-    signal: dict, info: Info, settings: Settings, leverage_config: dict,
+    signal: dict,
+    info: Info,
+    settings: Settings,
+    leverage_config: dict,
     batch_size: int = 1,
 ) -> tuple[float, float, float, int, str] | None:
     """Returns (mark_price, size, equity, leverage, rejection_reason) or None on fetch error.
@@ -118,7 +129,7 @@ async def _validate_and_size(
             equity, settings.risk_pct, entry_price, sl_price, batch_size, sz_decimals
         )
         logger.info(
-            f"Risk sizing | coin={coin} | risk={settings.risk_pct*100:.1f}%"
+            f"Risk sizing | coin={coin} | risk={settings.risk_pct * 100:.1f}%"
             f" | batch={batch_size} | entry={entry_price} | sl={sl_price}"
             f" | distance={abs(entry_price - sl_price):.2f} | size={size}"
         )
@@ -126,7 +137,9 @@ async def _validate_and_size(
         notional = settings.position_size_usd * leverage
         size = round(notional / mark_price, sz_decimals)
     else:
-        size = calculate_position_size(equity, mark_price, settings.position_size_pct, sz_decimals)
+        size = calculate_position_size(
+            equity, mark_price, settings.position_size_pct, sz_decimals
+        )
     if size <= 0:
         logger.warning(f"Calculated size is zero — skipping | coin={coin}")
         return mark_price, 0, 0, leverage, "zero size"
@@ -154,7 +167,9 @@ def _round_price(exchange: Exchange, coin: str, px: float) -> float:
     return round(float(f"{px:.5g}"), _px_decimals(exchange, coin))
 
 
-def _trigger_limit_px(exchange: Exchange, coin: str, is_buy: bool, trigger_px: float) -> float:
+def _trigger_limit_px(
+    exchange: Exchange, coin: str, is_buy: bool, trigger_px: float
+) -> float:
     # limit_px must be aggressive (worse than trigger) so the order always fills when triggered.
     slippage = 0.05
     adjusted = trigger_px * (1 + slippage if is_buy else 1 - slippage)
@@ -167,7 +182,11 @@ def _fetch_post_trade_state(info: Info, address: str, coin: str) -> dict:
     margin = user_state.get("marginSummary", {})
     margin_used = float(margin.get("totalMarginUsed", 0))
     spot_usdc = next(
-        (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
+        (
+            float(b["total"])
+            for b in spot_state.get("balances", [])
+            if b["coin"] == "USDC"
+        ),
         0.0,
     )
     account_value = spot_usdc
@@ -193,12 +212,16 @@ async def _enter_position(
 ) -> float | None:
     await asyncio.to_thread(exchange.update_leverage, leverage, coin, True)
     logger.info(f"Leverage set: {coin} {leverage}x cross")
-    entry_result = await asyncio.to_thread(exchange.market_open, coin, is_long, size, None, 0.02)
+    entry_result = await asyncio.to_thread(
+        exchange.market_open, coin, is_long, size, None, 0.02
+    )
     if entry_result.get("status") != "ok":
         logger.error(f"Market order failed | coin={coin} | result={entry_result}")
         return None
     try:
-        fill_price = float(entry_result["response"]["data"]["statuses"][0]["filled"]["avgPx"])
+        fill_price = float(
+            entry_result["response"]["data"]["statuses"][0]["filled"]["avgPx"]
+        )
     except (KeyError, IndexError, TypeError) as error:
         logger.error(f"Order did not fill | coin={coin} | {error}")
         return None
@@ -215,14 +238,18 @@ def _tpsl_order_ok(result: dict, label: str, coin: str) -> bool:
     try:
         inner = result["response"]["data"]["statuses"][0]
     except (KeyError, IndexError, TypeError):
-        logger.error(f"{label} placement — unreadable inner status | coin={coin} | result={result}")
+        logger.error(
+            f"{label} placement — unreadable inner status | coin={coin} | result={result}"
+        )
         return False
     # Trigger orders return the string "waitingForTrigger" on success.
     if inner == "waitingForTrigger":
         return True
     if isinstance(inner, dict):
         if "error" in inner:
-            logger.error(f"{label} placement inner error | coin={coin} | error={inner['error']}")
+            logger.error(
+                f"{label} placement inner error | coin={coin} | error={inner['error']}"
+            )
             return False
         if "resting" in inner or "filled" in inner:
             return True
@@ -231,8 +258,12 @@ def _tpsl_order_ok(result: dict, label: str, coin: str) -> bool:
 
 
 async def _place_tpsl_orders(
-    exchange: Exchange, coin: str, closing_is_buy: bool, size: float,
-    tp_price: float, sl_price: float,
+    exchange: Exchange,
+    coin: str,
+    closing_is_buy: bool,
+    size: float,
+    tp_price: float,
+    sl_price: float,
 ) -> tuple[bool, bool]:
     # Round trigger prices to 5 significant figures — HL rejects prices with 6+ sig figs.
     tp_price = _round_price(exchange, coin, tp_price)
@@ -241,22 +272,39 @@ async def _place_tpsl_orders(
     sl_limit = _trigger_limit_px(exchange, coin, closing_is_buy, sl_price)
     tp_type = {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}}
     sl_type = {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}}
+
     # positionTpsl grouping: send both TP and SL together as a pair on the existing position.
     # exchange.order() uses grouping="na" which HL rejects for trigger orders.
     def _make_order(limit_px, order_type):
-        return {"coin": coin, "is_buy": closing_is_buy, "sz": size,
-                "limit_px": limit_px, "order_type": order_type, "reduce_only": True}
+        return {
+            "coin": coin,
+            "is_buy": closing_is_buy,
+            "sz": size,
+            "limit_px": limit_px,
+            "order_type": order_type,
+            "reduce_only": True,
+        }
 
     tp_ok, sl_ok = False, False
     try:
         result = await asyncio.to_thread(
             exchange.bulk_orders,
             [_make_order(tp_limit, tp_type), _make_order(sl_limit, sl_type)],
-            None, "positionTpsl"
+            None,
+            "positionTpsl",
         )
         statuses = result.get("response", {}).get("data", {}).get("statuses", [{}, {}])
-        tp_result = {"status": result.get("status"), "response": {"type": "order", "data": {"statuses": [statuses[0]]}}}
-        sl_result = {"status": result.get("status"), "response": {"type": "order", "data": {"statuses": [statuses[1] if len(statuses) > 1 else {}]}}}
+        tp_result = {
+            "status": result.get("status"),
+            "response": {"type": "order", "data": {"statuses": [statuses[0]]}},
+        }
+        sl_result = {
+            "status": result.get("status"),
+            "response": {
+                "type": "order",
+                "data": {"statuses": [statuses[1] if len(statuses) > 1 else {}]},
+            },
+        }
         tp_ok = _tpsl_order_ok(tp_result, "TP", coin)
         sl_ok = _tpsl_order_ok(sl_result, "SL", coin)
         if tp_ok:
@@ -268,9 +316,32 @@ async def _place_tpsl_orders(
     return tp_ok, sl_ok
 
 
+async def _capture_entry_fee(
+    info: Info, settings: Settings, trade_id: int, coin: str, entry_px: float
+) -> None:
+    """Best-effort: fetch the entry fill fee and store it in the DB."""
+    try:
+        fills = await asyncio.to_thread(info.user_fills, settings.hl_account_address)
+        for fill in fills:
+            if fill.get("coin") != coin or "Open" not in fill.get("dir", ""):
+                continue
+            if abs(float(fill["px"]) - entry_px) / entry_px < 0.01:
+                await update_entry_fee(trade_id, float(fill.get("fee", 0)))
+                logger.info(
+                    f"Entry fee captured | trade={trade_id} | fee={fill['fee']}"
+                )
+                return
+        logger.warning(f"Entry fill not found for fee capture | trade={trade_id}")
+    except Exception as error:
+        logger.warning(f"Entry fee capture failed | trade={trade_id} | {error}")
+
+
 async def execute_signal(
-    signal: dict, info: Info, exchange: Exchange,
-    settings: Settings, leverage_config: dict,
+    signal: dict,
+    info: Info,
+    exchange: Exchange,
+    settings: Settings,
+    leverage_config: dict,
     notify: Notifier | None = None,
     batch_size: int = 1,
 ) -> None:
@@ -280,13 +351,29 @@ async def execute_signal(
     tp_price = float(signal["tp_price"])
     sl_price = float(signal["sl_price"])
 
-    sizing = await _validate_and_size(signal, info, settings, leverage_config, batch_size)
+    sizing = await _validate_and_size(
+        signal, info, settings, leverage_config, batch_size
+    )
     if sizing is None:
-        log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "fetch failed"})
+        log_signal(
+            {
+                "coin": coin,
+                "side": direction,
+                "outcome": "error",
+                "reason": "fetch failed",
+            }
+        )
         return
     mark_price, size, _, leverage, rejection = sizing
     if rejection:
-        log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": rejection})
+        log_signal(
+            {
+                "coin": coin,
+                "side": direction,
+                "outcome": "rejected",
+                "reason": rejection,
+            }
+        )
         if notify:
             await notify(f"⏭ {coin} {direction} skipped — <code>{rejection}</code>")
         return
@@ -297,32 +384,64 @@ async def execute_signal(
 
     fill_price = await _enter_position(exchange, coin, is_long, size, leverage)
     if fill_price is None:
-        log_signal({"coin": coin, "side": direction, "outcome": "error", "reason": "order not filled"})
+        log_signal(
+            {
+                "coin": coin,
+                "side": direction,
+                "outcome": "error",
+                "reason": "order not filled",
+            }
+        )
         if notify:
-            await notify(f"⚠️ {coin} {direction} — <code>order placed but did not fill</code>")
+            await notify(
+                f"⚠️ {coin} {direction} — <code>order placed but did not fill</code>"
+            )
         return
 
     # Write trade record BEFORE TP/SL — Financial Safety Rule #4
     trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
 
-    tp_ok, sl_ok = await _place_tpsl_orders(exchange, coin, not is_long, size, tp_price, sl_price)
+    tp_ok, sl_ok = await _place_tpsl_orders(
+        exchange, coin, not is_long, size, tp_price, sl_price
+    )
 
     direction_emoji = "🟢" if is_long else "🔴"
 
     if not tp_ok or not sl_ok:
         await update_trade_status(trade_id, "UNPROTECTED")
-        logger.error(f"POSITION UNPROTECTED — TP/SL failed | coin={coin} | trade_id={trade_id}")
+        logger.error(
+            f"POSITION UNPROTECTED — TP/SL failed | coin={coin} | trade_id={trade_id}"
+        )
         if notify:
-            await notify(f"⚠️ UNPROTECTED: {coin} {direction} @ <code>${fill_price:,.2f}</code> — TP/SL placement failed!")
+            await notify(
+                f"⚠️ UNPROTECTED: {coin} {direction} @ <code>${fill_price:,.2f}</code> — TP/SL placement failed!"
+            )
         return
 
-    log_signal({"coin": coin, "side": direction, "outcome": "filled", "entry": fill_price, "size": size})
-    logger.info(f"Trade complete | coin={coin} | entry={fill_price} | TP={tp_price} | SL={sl_price}")
+    asyncio.create_task(_capture_entry_fee(info, settings, trade_id, coin, fill_price))
+    log_signal(
+        {
+            "coin": coin,
+            "side": direction,
+            "outcome": "filled",
+            "entry": fill_price,
+            "size": size,
+        }
+    )
+    logger.info(
+        f"Trade complete | coin={coin} | entry={fill_price} | TP={tp_price} | SL={sl_price}"
+    )
     if notify:
-        post = await asyncio.to_thread(_fetch_post_trade_state, info, settings.hl_account_address, coin)
+        post = await asyncio.to_thread(
+            _fetch_post_trade_state, info, settings.hl_account_address, coin
+        )
         notional = size * fill_price
         liq_str = f"${post['liq_px']:,.2f}" if post["liq_px"] else "N/A"
-        margin_pct = (post["margin_used"] / post["account_value"] * 100) if post["account_value"] > 0 else 0
+        margin_pct = (
+            (post["margin_used"] / post["account_value"] * 100)
+            if post["account_value"] > 0
+            else 0
+        )
         await notify(
             f"{direction_emoji} {coin} {direction} OPENED\n\n"
             f"📐 Size: <code>{size} (${notional:,.2f})</code>\n"
@@ -338,15 +457,24 @@ async def execute_signal(
 
 
 def make_signal_handler(
-    info: Info, exchange: Exchange, settings: Settings, leverage_config: dict,
-    notify: Notifier | None = None, bot_state=None,
+    info: Info,
+    exchange: Exchange,
+    settings: Settings,
+    leverage_config: dict,
+    notify: Notifier | None = None,
+    bot_state=None,
 ):
     async def handler(signal: dict, batch_size: int = 1) -> None:
         if bot_state and bot_state.paused:
-            logger.info(f"Bot paused — signal dropped | coin={signal.get('coin_symbol')}")
+            logger.info(
+                f"Bot paused — signal dropped | coin={signal.get('coin_symbol')}"
+            )
             return
         try:
-            await execute_signal(signal, info, exchange, settings, leverage_config, notify, batch_size)
+            await execute_signal(
+                signal, info, exchange, settings, leverage_config, notify, batch_size
+            )
         except Exception as error:
             logger.error(f"Unexpected error in execute_signal | {error}", exc_info=True)
+
     return handler
