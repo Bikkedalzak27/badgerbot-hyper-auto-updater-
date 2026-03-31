@@ -35,6 +35,7 @@ from services.trade_executor import (
     _place_tpsl_orders,
     build_exchange,
     load_leverage_config,
+    safe_spot_meta,
 )
 from storage.trade_log import init_trade_log, insert_trade, update_trade_status
 
@@ -157,7 +158,7 @@ async def run_simulation(mode: str) -> None:
     logger.info(f"Simulating {len(templates)} signal(s): {directions}, {DELAY_BETWEEN_SIGNALS_SECONDS}s apart")
 
     api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
-    info = Info(api_url, skip_ws=True)
+    info = Info(api_url, skip_ws=True, spot_meta=safe_spot_meta(api_url))
     exchange = build_exchange(settings)
     leverage_config = load_leverage_config()
 
