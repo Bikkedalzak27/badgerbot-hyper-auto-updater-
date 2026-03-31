@@ -11,7 +11,7 @@ from hyperliquid.utils import constants
 
 from config.settings import Settings
 from services.signal_consumer import log_signal, validate_signal
-from storage.trade_log import insert_trade, update_trade_status
+from storage.trade_log import insert_trade, update_entry_fee, update_trade_status
 
 logger = logging.getLogger("TradeExecutor")
 

@@ -6,7 +6,7 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 
 from config.settings import Settings
-from storage.trade_log import close_trade, fetch_open_trades
+from storage.trade_log import close_trade, fetch_open_trades, net_pnl, update_entry_fee
 
 logger = logging.getLogger("PositionMonitor")
 
