@@ -100,11 +100,23 @@ def _get_close_fills(fills: list, coin: str, side: str, since_ms: float) -> list
     return sorted(matching, key=lambda f: f["time"])
 
 
-def _find_matching_trade(open_trades: list[dict], fill_px: float) -> dict | None:
-    """Returns the trade whose TP or SL price is closest to the fill price."""
+def _find_matching_trade(
+    open_trades: list[dict], fill_px: float, fill_sz: float
+) -> dict | None:
+    """Match fill to trade by size first (within 1%), then TP/SL price proximity."""
+    # Phase 1: exact size match narrows candidates
+    size_matched = [
+        t
+        for t in open_trades
+        if float(t["size"]) > 0
+        and abs(float(t["size"]) - fill_sz) / float(t["size"]) < 0.01
+    ]
+    candidates = size_matched if size_matched else open_trades
+
+    # Phase 2: closest TP/SL price as tiebreaker
     best_trade = None
     best_distance = float("inf")
-    for trade in open_trades:
+    for trade in candidates:
         distance = min(
             abs(float(trade["tp_px"]) - fill_px),
             abs(float(trade["sl_px"]) - fill_px),
@@ -218,10 +230,11 @@ async def _process_coin_closures(
             break
 
         fill_px = float(fill["px"])
+        fill_sz = float(fill.get("sz", 0))
         pnl = float(fill.get("closedPnl", 0))
         close_fee = float(fill.get("fee", 0))
 
-        trade = _find_matching_trade(pending_trades, fill_px)
+        trade = _find_matching_trade(pending_trades, fill_px, fill_sz)
         if trade is None:
             break
 
