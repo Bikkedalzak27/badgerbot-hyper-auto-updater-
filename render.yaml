@@ -1,0 +1,37 @@
+services:
+  - type: worker
+    name: badgerbot-hyper
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # Database — persisted across deploys via the /data disk
+      - key: HYPERBOT_DB_PATH
+        value: /data/hyperbot.db
+      # Network — switch to false when ready for mainnet
+      - key: HL_USE_TESTNET
+        value: "true"
+      # Sizing defaults — adjust to your preference
+      - key: POSITION_SIZE_PCT
+        value: "0.10"
+      - key: MAX_SIGNAL_AGE_SECONDS
+        value: "60"
+      - key: MAX_PRICE_DEVIATION_PCT
+        value: "0.01"
+      - key: POSITION_POLL_INTERVAL_SECONDS
+        value: "15"
+      # Secrets — set these manually in the Render dashboard
+      - key: HL_ACCOUNT_ADDRESS
+        sync: false
+      - key: HL_API_PRIVATE_KEY
+        sync: false
+      - key: BADGERBOT_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_AUTHORIZED_USER_ID
+        sync: false
