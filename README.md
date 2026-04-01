@@ -191,27 +191,7 @@ This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each), 
 Runs as your own user — no root required. Auto-restarts on crash.
 
 ```bash
-cd ~/badgerbot-hyper
-mkdir -p ~/.config/systemd/user
-tee ~/.config/systemd/user/badgerbot.service > /dev/null <<EOF
-[Unit]
-Description=BadgerBot Hyper
-After=network.target
-
-[Service]
-WorkingDirectory=$(pwd)
-ExecStart=$(pwd)/.venv/bin/python main.py
-Restart=always
-RestartSec=10
-TimeoutStopSec=180
-
-[Install]
-WantedBy=default.target
-EOF
-
-systemctl --user daemon-reload
-systemctl --user enable badgerbot
-systemctl --user start badgerbot
+bash install-service.sh
 ```
 
 ```bash
