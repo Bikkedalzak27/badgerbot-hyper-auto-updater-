@@ -90,7 +90,7 @@ In your Render service, go to **Environment** and add each variable:
 | `HYPERBOT_DB_PATH` | `/data/hyperbot.db` |
 | `HL_ACCOUNT_ADDRESS` | Your main wallet address |
 | `HL_API_PRIVATE_KEY` | Your API wallet private key |
-| `HL_USE_TESTNET` | `true` |
+| `HL_USE_TESTNET` | `false` |
 | `BADGERBOT_API_KEY` | Your BadgerBot API key |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token |
 | `TELEGRAM_AUTHORIZED_USER_ID` | Your numeric Telegram user ID |
@@ -103,14 +103,6 @@ In your Render service, go to **Environment** and add each variable:
 3. Send `/status` to your Telegram bot — it should respond with your account balance
 
 Your bot is now live. It restarts automatically on crash and on new code deploys.
-
-### Going Live on Render
-
-When you're ready to switch from testnet to mainnet:
-
-1. In Render → **Environment**, change `HL_USE_TESTNET` from `true` to `false`
-2. Click **Save Changes** — Render will restart the service automatically
-3. Send `/status` to confirm your mainnet balance is showing
 
 ---
 
@@ -159,7 +151,7 @@ Fill in your credentials:
 ```env
 HL_ACCOUNT_ADDRESS=0xYourMainWalletAddress
 HL_API_PRIVATE_KEY=0xYourApiPrivateKey
-HL_USE_TESTNET=true
+HL_USE_TESTNET=false
 BADGERBOT_API_KEY=your-badgerbot-api-key
 TELEGRAM_BOT_TOKEN=110201543:AAHdqTcvCH1vGWJxfSeofSs4tDXtoAg
 TELEGRAM_AUTHORIZED_USER_ID=123456789
@@ -170,13 +162,17 @@ Save with `Ctrl+O`, exit with `Ctrl+X`.
 
 ### Step 4: Test a Trade
 
-Before going live, verify the full flow — entry, TP/SL placement, and Telegram notification:
+Verify the bot can place and protect orders before leaving it running unattended:
 
 ```bash
 .venv/bin/python simulate_signals.py
 ```
 
-This opens one minimum-size ETH LONG and one ETH SHORT (~$11 notional each). You'll receive a Telegram notification for each. Check positions with `/position` and close them with `/close all` when done.
+This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each, ~$22 total). You'll receive a Telegram notification for each. Once confirmed, close them immediately:
+
+```
+/close all
+```
 
 ```bash
 # Test only one direction if needed:
@@ -184,7 +180,7 @@ This opens one minimum-size ETH LONG and one ETH SHORT (~$11 notional each). You
 .venv/bin/python simulate_signals.py --mode short
 ```
 
-> Ensure `HL_USE_TESTNET=true` before running. The simulator places **real orders** on whichever network is configured.
+> **This places real orders on your mainnet account.** Make sure your account has at least $25 USDC before running.
 
 ### Step 5: Start the Bot
 
@@ -241,15 +237,6 @@ tmux new -s badgerbot
 # Ctrl+C  — stop the bot
 ```
 
-### Going Live on VPS
-
-When ready to switch from testnet to mainnet:
-
-1. Stop the bot: `sudo systemctl stop badgerbot` (or Ctrl+C in tmux)
-2. Edit `.env`: change `HL_USE_TESTNET=true` to `HL_USE_TESTNET=false`
-3. Start again: `sudo systemctl start badgerbot`
-4. Send `/status` to confirm your mainnet balance is showing
-
 ---
 
 ## Environment Variables
@@ -258,7 +245,7 @@ When ready to switch from testnet to mainnet:
 |---|---|---|---|
 | `HL_ACCOUNT_ADDRESS` | Yes | — | Main wallet address (`0x...`) |
 | `HL_API_PRIVATE_KEY` | Yes | — | API wallet private key — no withdrawal access |
-| `HL_USE_TESTNET` | No | `true` | `true` for testnet, `false` for mainnet |
+| `HL_USE_TESTNET` | No | `false` | `true` for testnet, `false` for mainnet |
 | `BADGERBOT_API_KEY` | Yes | — | Signal stream key from BadgerBot dashboard |
 | `TELEGRAM_BOT_TOKEN` | Yes | — | Token from @BotFather |
 | `TELEGRAM_AUTHORIZED_USER_ID` | Yes | — | Your numeric Telegram user ID |
