@@ -168,11 +168,7 @@ Verify the bot can place and protect orders before leaving it running unattended
 .venv/bin/python simulate_signals.py
 ```
 
-This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each, ~$22 total). You'll receive a Telegram notification for each. Once confirmed, close them immediately:
-
-```
-/close all
-```
+This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each), then automatically closes both and cancels their TP/SL orders. You'll receive a Telegram notification for each trade and a summary when cleanup is done.
 
 ```bash
 # Test only one direction if needed:

@@ -37,7 +37,7 @@ from services.trade_executor import (
     load_leverage_config,
     safe_spot_meta,
 )
-from storage.trade_log import init_trade_log, insert_trade, update_trade_status
+from storage.trade_log import close_trade, init_trade_log, insert_trade, update_trade_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +45,11 @@ logging.basicConfig(
     force=True,
 )
 logger = logging.getLogger("Simulator")
+
+
+def _b(text) -> str:
+    return f"<code>{text}</code>"
+
 
 COIN = "ETH"
 MINIMUM_NOTIONAL_USD = 11.0  # HL enforces $10 minimum notional; pad to $11 for safety
@@ -188,7 +193,72 @@ async def run_simulation(mode: str) -> None:
                 logger.info(f"Waiting {DELAY_BETWEEN_SIGNALS_SECONDS}s before next signal...")
                 await asyncio.sleep(DELAY_BETWEEN_SIGNALS_SECONDS)
 
+        await close_simulation_trades(info, exchange, settings.hl_account_address, telegram_bot.send)
+
     logger.info("Simulation complete.")
+
+
+async def close_simulation_trades(info, exchange, address: str, notify) -> None:
+    """Close all positions opened during the simulation and cancel their TP/SL orders."""
+    from storage.trade_log import fetch_open_trades
+
+    open_trades = await fetch_open_trades()
+    if not open_trades:
+        logger.info("No open simulation trades to close.")
+        return
+
+    coins = list({t["coin"] for t in open_trades})
+    logger.info(f"Auto-closing simulation trades | coins={coins}")
+
+    try:
+        all_orders = await asyncio.to_thread(info.frontend_open_orders, address)
+    except Exception as error:
+        logger.error(f"Failed to fetch open orders for cleanup: {error}")
+        all_orders = []
+
+    total_pnl = 0.0
+    lines = []
+
+    for coin in coins:
+        coin_trades = [t for t in open_trades if t["coin"] == coin]
+        side = coin_trades[0]["side"]
+        direction_emoji = "🟢" if side == "LONG" else "🔴"
+
+        try:
+            result = await asyncio.to_thread(exchange.market_close, coin, slippage=0.02)
+            fill_px = float(result["response"]["data"]["statuses"][0]["filled"]["avgPx"])
+        except Exception as error:
+            logger.error(f"Auto-close failed for {coin}: {error}")
+            lines.append(f"{coin} — close failed")
+            continue
+
+        oids = [o["oid"] for o in all_orders if o.get("coin") == coin and o.get("isTrigger")]
+        if oids:
+            try:
+                await asyncio.to_thread(
+                    exchange.bulk_cancel,
+                    [{"coin": coin, "oid": oid} for oid in oids],
+                )
+                logger.info(f"Cancelled {len(oids)} TP/SL order(s) for {coin}")
+            except Exception as error:
+                logger.error(f"Failed to cancel TP/SL for {coin}: {error}")
+
+        for trade in coin_trades:
+            entry_px = float(trade["entry_px"])
+            size = float(trade["size"])
+            pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
+            total_pnl += pnl
+            await close_trade(trade["id"], pnl, "MANUAL")
+
+        lines.append(f"{direction_emoji} {coin} {side} closed @ ${fill_px:,.2f}")
+
+    pnl_sign = "+" if total_pnl >= 0 else ""
+    await notify(
+        f"🧹 Simulation complete — trades closed\n\n"
+        + "\n".join(lines)
+        + f"\n\n💰 Net PnL: {_b(f'{pnl_sign}${total_pnl:,.2f}')}"
+    )
+    logger.info(f"Simulation cleanup complete | total_pnl={total_pnl:.4f}")
 
 
 if __name__ == "__main__":
