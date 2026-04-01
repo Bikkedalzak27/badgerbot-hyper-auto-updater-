@@ -31,6 +31,19 @@ SERVICE
 
 echo "Service file written to $SERVICE_FILE"
 
+# systemctl --user requires the session bus, which SSH logins may not start.
+# Exporting XDG_RUNTIME_DIR points it to the correct runtime directory.
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    echo ""
+    echo "NOTE: $XDG_RUNTIME_DIR does not exist."
+    echo "Enable linger first so the runtime directory is created on boot:"
+    echo "  sudo loginctl enable-linger \$USER"
+    echo "Then re-run this script."
+    exit 1
+fi
+
 systemctl --user daemon-reload
 systemctl --user enable badgerbot
 systemctl --user start badgerbot
