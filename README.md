@@ -186,19 +186,19 @@ This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each), 
 
 ### Step 6: Keep It Running
 
-#### Option A: systemd (recommended)
+#### Option A: systemd user service (recommended, no sudo)
 
-Auto-restarts on crash and survives server reboots:
+Runs as your own user — no root required. Auto-restarts on crash.
 
 ```bash
-sudo tee /etc/systemd/system/badgerbot.service > /dev/null <<EOF
+cd ~/badgerbot-hyper
+mkdir -p ~/.config/systemd/user
+tee ~/.config/systemd/user/badgerbot.service > /dev/null <<EOF
 [Unit]
 Description=BadgerBot Hyper
 After=network.target
 
 [Service]
-Type=simple
-User=$USER
 WorkingDirectory=$(pwd)
 ExecStart=$(pwd)/.venv/bin/python main.py
 Restart=always
@@ -206,24 +206,29 @@ RestartSec=10
 TimeoutStopSec=180
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable badgerbot
-sudo systemctl start badgerbot
+systemctl --user daemon-reload
+systemctl --user enable badgerbot
+systemctl --user start badgerbot
 ```
 
 ```bash
-sudo systemctl status badgerbot     # check if running
-sudo journalctl -u badgerbot -f     # live log stream
-sudo systemctl restart badgerbot    # restart
-sudo systemctl stop badgerbot       # stop
+systemctl --user status badgerbot     # check if running
+journalctl --user -u badgerbot -f     # live log stream
+systemctl --user restart badgerbot    # restart
+systemctl --user stop badgerbot       # stop
 ```
 
-#### Option B: tmux (simpler)
+> **Auto-start on boot/logout** — by default user services only run while you're logged in. To keep it running after you disconnect or reboot, run this once (requires sudo once only):
+> ```bash
+> sudo loginctl enable-linger $USER
+> ```
 
-Keeps the bot running after you disconnect, but does not survive reboots:
+#### Option B: tmux (simplest, no sudo)
+
+No installation needed. Does not survive reboots unless you re-attach and restart manually.
 
 ```bash
 tmux new -s badgerbot
