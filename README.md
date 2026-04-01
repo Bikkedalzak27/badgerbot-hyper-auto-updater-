@@ -299,7 +299,8 @@ With $500 equity, each trade opens a $50 notional position. To disable a mode, c
 ### Is the bot healthy?
 
 ```bash
-systemctl --user status badgerbot
+systemctl --user status badgerbot   # non-root
+systemctl status badgerbot          # root
 ```
 
 | What you see | Meaning |
@@ -313,8 +314,9 @@ systemctl --user status badgerbot
 ### Reading the logs
 
 ```bash
-journalctl --user -u badgerbot -f        # live log stream
-journalctl --user -u badgerbot -n 100    # last 100 lines
+journalctl --user -u badgerbot -f        # live log stream (non-root)
+journalctl --user -u badgerbot -n 100    # last 100 lines (non-root)
+journalctl -u badgerbot -f               # live log stream (root)
 ```
 
 | Log line | Meaning |
