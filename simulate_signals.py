@@ -233,13 +233,18 @@ async def close_simulation_trades(info, exchange, address: str, notify, sim_trad
         side = coin_trades[0]["side"]
         direction_emoji = "🟢" if side == "LONG" else "🔴"
 
+        # market_close returns None when the net position is already zero
+        # (e.g. a LONG and SHORT of equal size netted each other out on cross margin).
+        # Still cancel the orphaned TP/SL orders and mark DB records closed.
+        fill_px = None
         try:
             result = await asyncio.to_thread(exchange.market_close, coin, slippage=0.02)
-            fill_px = float(result["response"]["data"]["statuses"][0]["filled"]["avgPx"])
+            statuses = (result or {}).get("response", {}).get("data", {}).get("statuses", [])
+            filled = statuses[0].get("filled") if statuses else None
+            if filled:
+                fill_px = float(filled["avgPx"])
         except Exception as error:
-            logger.error(f"Auto-close failed for {coin}: {error}")
-            lines.append(f"{coin} — close failed")
-            continue
+            logger.warning(f"market_close for {coin} returned no fill: {error}")
 
         oids = [o["oid"] for o in all_orders if o.get("coin") == coin and o.get("isTrigger")]
         if oids:
@@ -255,11 +260,14 @@ async def close_simulation_trades(info, exchange, address: str, notify, sim_trad
         for trade in coin_trades:
             entry_px = float(trade["entry_px"])
             size = float(trade["size"])
-            pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
+            pnl = (fill_px - entry_px) * size if (fill_px and side == "LONG") else (entry_px - fill_px) * size if fill_px else 0.0
             total_pnl += pnl
             await close_trade(trade["id"], pnl, "MANUAL")
 
-        lines.append(f"{direction_emoji} {coin} {side} closed @ ${fill_px:,.2f}")
+        if fill_px:
+            lines.append(f"{direction_emoji} {coin} {side} closed @ ${fill_px:,.2f}")
+        else:
+            lines.append(f"{direction_emoji} {coin} {side} netted to zero — TP/SL cancelled")
 
     pnl_sign = "+" if total_pnl >= 0 else ""
     await notify(
