@@ -108,7 +108,7 @@ async def build_signal(info: Info, template: dict) -> dict:
 
 async def execute_with_fixed_size(
     signal: dict, size: float, info, exchange, leverage_config: dict, notify, address: str
-) -> None:
+) -> int | None:
     coin = signal["coin_symbol"]
     is_long = signal["mode"] == "LONG"
     direction = signal["mode"]
@@ -120,7 +120,7 @@ async def execute_with_fixed_size(
     fill_price = await _enter_position(exchange, coin, is_long=is_long, size=size, leverage=leverage)
     if fill_price is None:
         logger.error(f"Entry failed | coin={coin}")
-        return
+        return None
 
     trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
     tp_ok, sl_ok = await _place_tpsl_orders(exchange, coin, not is_long, size, tp_price, sl_price)
@@ -147,6 +147,7 @@ async def execute_with_fixed_size(
             f"🎢 Margin Used: ${post['margin_used']:,.2f} ({margin_pct:.1f}%)\n"
             f"💰 Available: ${post['withdrawable']:,.2f}"
         )
+    return trade_id
 
 
 async def run_simulation(mode: str) -> None:
@@ -174,6 +175,7 @@ async def run_simulation(mode: str) -> None:
     min_size = await fetch_min_size(info, COIN)
 
     async with telegram_bot._app:
+        sim_trade_ids = []
         for index, template in enumerate(templates):
             signal = await build_signal(info, template)
             logger.info(
@@ -184,27 +186,34 @@ async def run_simulation(mode: str) -> None:
                 f" | size: {min_size}"
             )
 
-            await execute_with_fixed_size(
+            trade_id = await execute_with_fixed_size(
                 signal, min_size, info, exchange, leverage_config, telegram_bot.send,
                 settings.hl_account_address
             )
+            if trade_id is not None:
+                sim_trade_ids.append(trade_id)
 
             if index < len(templates) - 1:
                 logger.info(f"Waiting {DELAY_BETWEEN_SIGNALS_SECONDS}s before next signal...")
                 await asyncio.sleep(DELAY_BETWEEN_SIGNALS_SECONDS)
 
-        await close_simulation_trades(info, exchange, settings.hl_account_address, telegram_bot.send)
+        await close_simulation_trades(info, exchange, settings.hl_account_address, telegram_bot.send, sim_trade_ids)
 
     logger.info("Simulation complete.")
 
 
-async def close_simulation_trades(info, exchange, address: str, notify) -> None:
-    """Close all positions opened during the simulation and cancel their TP/SL orders."""
+async def close_simulation_trades(info, exchange, address: str, notify, sim_trade_ids: list[int]) -> None:
+    """Close only the positions opened during this simulation run and cancel their TP/SL orders."""
     from storage.trade_log import fetch_open_trades
 
-    open_trades = await fetch_open_trades()
+    if not sim_trade_ids:
+        logger.info("No simulation trades were opened — nothing to close.")
+        return
+
+    all_open = await fetch_open_trades()
+    open_trades = [t for t in all_open if t["id"] in sim_trade_ids]
     if not open_trades:
-        logger.info("No open simulation trades to close.")
+        logger.info("Simulation trades already closed (filled by TP/SL).")
         return
 
     coins = list({t["coin"] for t in open_trades})
