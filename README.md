@@ -294,6 +294,57 @@ With $500 equity, each trade opens a $50 notional position. To disable a mode, c
 
 ---
 
+## Checking Logs & Status
+
+### Is the bot healthy?
+
+```bash
+systemctl --user status badgerbot
+```
+
+| What you see | Meaning |
+|---|---|
+| `Active: active (running)` | Bot is running normally |
+| `Active: activating (auto-restart)` | Crashed and is restarting — check logs |
+| `Active: inactive (dead)` | Stopped — not running |
+| `status=203/EXEC` | Python or path not found — check `ExecStart` path in the service file |
+| `status=1` | Bot started but exited with an error — check logs |
+
+### Reading the logs
+
+```bash
+journalctl --user -u badgerbot -f        # live log stream
+journalctl --user -u badgerbot -n 100    # last 100 lines
+```
+
+| Log line | Meaning |
+|---|---|
+| `Active: active (running)` | All good |
+| `Listening for signals on wss://...` | Connected to BadgerBot signal feed |
+| `WebSocket disconnected` | Signal feed dropped — bot will reconnect automatically |
+| `Signal feed offline` | No message received for 5+ minutes — check your API key |
+| `Entry filled @ ...` | Trade opened successfully |
+| `POSITION UNPROTECTED` | Trade opened but TP/SL placement failed — close it manually |
+| `Market order failed` | Order rejected by Hyperliquid — check account balance and API key |
+| `Missing required environment variables` | `.env` is incomplete — check all required vars are set |
+| `Failed to connect to Hyperliquid` | Network issue or wrong API URL — check `HL_USE_TESTNET` setting |
+
+### Common issues
+
+**Bot restarts every 10 seconds (`status=203/EXEC`)**
+The Python path in the service file is wrong. Re-run `bash install-service.sh` from inside the `badgerbot-hyper` directory.
+
+**"User or API Wallet does not exist"**
+The API wallet isn't approved for the configured network. Go to [app.hyperliquid.xyz/API](https://app.hyperliquid.xyz/API) and approve it. If using testnet, approval must be done separately at the testnet app.
+
+**No signals appearing**
+Check `/signal` in Telegram. If it shows nothing since restart, verify `BADGERBOT_API_KEY` in `.env` and that your BadgerBot subscription is active.
+
+**Telegram bot not responding**
+Confirm `TELEGRAM_BOT_TOKEN` and `TELEGRAM_AUTHORIZED_USER_ID` are correct. The bot only responds to the authorized user ID — messages from other accounts are silently ignored.
+
+---
+
 ## Leverage Configuration
 
 Edit `config/coin_leverage.json` to set leverage per coin:
