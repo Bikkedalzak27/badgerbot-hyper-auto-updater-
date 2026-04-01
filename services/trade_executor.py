@@ -207,8 +207,9 @@ def _fetch_post_trade_state(info: Info, address: str, coin: str) -> dict:
         ),
         0.0,
     )
-    account_value = spot_usdc
-    available = spot_usdc - margin_used
+    perps_equity = float(margin.get("accountValue", 0))
+    account_value = max(perps_equity, spot_usdc)
+    available = account_value - margin_used
     liq_px = None
     for ap in user_state.get("assetPositions", []):
         pos = ap.get("position", {})

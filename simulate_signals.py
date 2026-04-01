@@ -175,6 +175,15 @@ async def run_simulation(mode: str) -> None:
     min_size = await fetch_min_size(info, COIN)
 
     async with telegram_bot._app:
+        network = "MAINNET" if not settings.hl_use_testnet else "TESTNET"
+        directions = " + ".join(t["mode"] for t in templates)
+        await telegram_bot.send(
+            f"🧪 Simulation started\n\n"
+            f"📊 Directions: {_b(directions)}\n"
+            f"🪙 Coin: {_b(COIN)}\n"
+            f"🌐 Network: {_b(network)}"
+        )
+
         sim_trade_ids = []
         for index, template in enumerate(templates):
             signal = await build_signal(info, template)
