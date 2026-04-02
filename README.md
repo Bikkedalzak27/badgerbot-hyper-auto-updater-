@@ -140,7 +140,7 @@ Install Python 3.12, clone the repo, and run the setup script:
 ```bash
 sudo apt update && sudo apt install -y python3.12 python3.12-venv git
 
-git clone https://github.com/YOUR_USERNAME/badgerbot-hyper.git
+git clone https://github.com/ProjectBadgerBot/badgerbot-hyper.git
 cd badgerbot-hyper
 
 bash setup.sh
