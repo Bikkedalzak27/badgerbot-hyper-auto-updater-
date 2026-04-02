@@ -674,7 +674,6 @@ class TelegramBot:
         )
 
     async def _send_startup_message(self) -> None:
-        network = "MAINNET" if not self._settings.hl_use_testnet else "TESTNET"
         address = self._settings.hl_account_address
         short_address = f"{address[:6]}...{address[-4:]}"
 
@@ -685,10 +684,24 @@ class TelegramBot:
         else:
             sizing = f"{self._settings.position_size_pct * 100:.0f}% equity per trade"
 
+        try:
+            user_state = await asyncio.to_thread(self._info.user_state, address)
+            margin_summary = user_state.get("marginSummary", {})
+            perps_equity = float(margin_summary.get("accountValue", 0))
+            spot_state = await asyncio.to_thread(self._info.spot_user_state, address)
+            spot_usdc = next(
+                (float(b["total"]) for b in spot_state.get("balances", []) if b["coin"] == "USDC"),
+                0.0,
+            )
+            equity = max(perps_equity, spot_usdc)
+            equity_str = f"${equity:,.2f}"
+        except Exception:
+            equity_str = "N/A"
+
         await self.send(
             f"🟢 BadgerBot Hyper started\n\n"
-            f"🌐 Network: {_b(network)}\n"
             f"👛 Account: {_b(short_address)}\n"
+            f"💰 Equity: {_b(equity_str)}\n"
             f"📐 Sizing: {_b(sizing)}\n"
             f"📡 Listening for signals..."
         )
