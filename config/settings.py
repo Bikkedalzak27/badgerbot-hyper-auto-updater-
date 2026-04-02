@@ -17,7 +17,6 @@ REQUIRED_KEYS = [
 class Settings:
     hl_account_address: str
     hl_api_private_key: str
-    hl_use_testnet: bool
     badgerbot_api_key: str
     position_size_pct: float
     position_size_usd: float | None
@@ -44,7 +43,6 @@ def load_settings() -> Settings:
     return Settings(
         hl_account_address=os.environ["HL_ACCOUNT_ADDRESS"],
         hl_api_private_key=os.environ["HL_API_PRIVATE_KEY"],
-        hl_use_testnet=os.getenv("HL_USE_TESTNET", "true").lower() == "true",
         badgerbot_api_key=os.environ["BADGERBOT_API_KEY"],
         position_size_pct=float(os.getenv("POSITION_SIZE_PCT", "0.10")),
         position_size_usd=float(v) if (v := os.getenv("POSITION_SIZE_USD")) else None,
