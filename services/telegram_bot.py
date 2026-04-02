@@ -673,6 +673,26 @@ class TelegramBot:
             "❓ /help — this message"
         )
 
+    async def _send_startup_message(self) -> None:
+        network = "MAINNET" if not self._settings.hl_use_testnet else "TESTNET"
+        address = self._settings.hl_account_address
+        short_address = f"{address[:6]}...{address[-4:]}"
+
+        if self._settings.risk_pct is not None:
+            sizing = f"{self._settings.risk_pct * 100:.1f}% risk per trade"
+        elif self._settings.position_size_usd is not None:
+            sizing = f"${self._settings.position_size_usd:,.0f} fixed margin"
+        else:
+            sizing = f"{self._settings.position_size_pct * 100:.0f}% equity per trade"
+
+        await self.send(
+            f"🟢 BadgerBot Hyper started\n\n"
+            f"🌐 Network: {_b(network)}\n"
+            f"👛 Account: {_b(short_address)}\n"
+            f"📐 Sizing: {_b(sizing)}\n"
+            f"📡 Listening for signals..."
+        )
+
     async def run(self, stop_event: asyncio.Event) -> None:
         async with self._app:
             await self._app.bot.set_my_commands(
@@ -691,6 +711,7 @@ class TelegramBot:
             await self._app.start()
             await self._app.updater.start_polling(drop_pending_updates=True)
             logger.info("Telegram bot polling started.")
+            await self._send_startup_message()
             await stop_event.wait()
             await self._app.updater.stop()
             await self._app.stop()

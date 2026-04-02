@@ -187,7 +187,23 @@ async def connect_and_listen(
             try:
                 last_message_ref[0] = time.monotonic()
                 reconnect_delay = INITIAL_RECONNECT_DELAY_SECONDS
-                await _listen(websocket_url, signal_handler, settings, last_message_ref)
+                listen_task = asyncio.create_task(
+                    _listen(websocket_url, signal_handler, settings, last_message_ref)
+                )
+                stop_task = asyncio.create_task(stop_event.wait())
+                done, pending = await asyncio.wait(
+                    {listen_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                if stop_task in done:
+                    break
+                if not listen_task.cancelled() and listen_task.exception():
+                    raise listen_task.exception()
             except ConnectionClosed as error:
                 logger.warning(f"WebSocket disconnected: {error}")
             except Exception as error:

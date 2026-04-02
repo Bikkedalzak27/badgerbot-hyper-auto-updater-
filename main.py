@@ -12,7 +12,7 @@ from config.settings import Settings, load_settings
 from services.position_monitor import run_position_monitor
 from services.signal_consumer import connect_and_listen
 from services.telegram_bot import BotState, TelegramBot
-from services.trade_executor import build_exchange, load_leverage_config, make_signal_handler
+from services.trade_executor import build_exchange, load_leverage_config, make_signal_handler, safe_spot_meta
 from storage.trade_log import fetch_open_trades, init_trade_log, insert_trade, repair_trade_tpsl, update_trade_status
 
 LOGS_DIR = Path(__file__).parent / "logs"
@@ -37,7 +37,7 @@ def configure_logging() -> None:
 
 def connect_to_hyperliquid(settings: Settings) -> Info:
     api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
-    return Info(api_url, skip_ws=True)
+    return Info(api_url, skip_ws=True, spot_meta=safe_spot_meta(api_url))
 
 
 async def create_info(settings: Settings, logger: logging.Logger) -> Info:

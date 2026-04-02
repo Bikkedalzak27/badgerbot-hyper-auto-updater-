@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 import eth_account
+from hyperliquid.api import API
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
@@ -22,6 +23,22 @@ LEVERAGE_CONFIG_PATH = Path(__file__).parent.parent / "config" / "coin_leverage.
 _sz_decimals_cache: dict[str, int] = {}
 
 
+def safe_spot_meta(api_url: str) -> dict:
+    """Fetch spot metadata with out-of-bounds universe entries filtered out.
+
+    SDK 0.22.0 crashes in Info.__init__ on testnet when a spot market references
+    a token index beyond the length of spot_meta["tokens"]. Filter those entries
+    before passing spot_meta to Info or Exchange.
+    """
+    raw = API(api_url).post("/info", {"type": "spotMeta"})
+    token_count = len(raw.get("tokens", []))
+    raw["universe"] = [
+        entry for entry in raw.get("universe", [])
+        if all(idx < token_count for idx in entry.get("tokens", []))
+    ]
+    return raw
+
+
 def load_leverage_config() -> dict:
     with open(LEVERAGE_CONFIG_PATH) as file:
         return json.load(file)
@@ -35,7 +52,8 @@ def build_exchange(settings: Settings) -> Exchange:
     )
     wallet = eth_account.Account.from_key(settings.hl_api_private_key)
     # account_address required — without it Exchange uses API wallet address (empty account)
-    return Exchange(wallet, api_url, account_address=settings.hl_account_address)
+    # spot_meta pre-filtered to work around SDK 0.22.0 testnet IndexError
+    return Exchange(wallet, api_url, account_address=settings.hl_account_address, spot_meta=safe_spot_meta(api_url))
 
 
 def _fetch_sz_decimals(info: Info) -> dict[str, int]:
@@ -189,8 +207,9 @@ def _fetch_post_trade_state(info: Info, address: str, coin: str) -> dict:
         ),
         0.0,
     )
-    account_value = spot_usdc
-    available = spot_usdc - margin_used
+    perps_equity = float(margin.get("accountValue", 0))
+    account_value = max(perps_equity, spot_usdc)
+    available = account_value - margin_used
     liq_px = None
     for ap in user_state.get("assetPositions", []):
         pos = ap.get("position", {})
