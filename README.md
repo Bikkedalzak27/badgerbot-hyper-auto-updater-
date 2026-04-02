@@ -244,6 +244,7 @@ journalctl --user -u badgerbot -f     # live log stream
 journalctl --user -u badgerbot -n 100 # last 100 lines
 systemctl --user restart badgerbot    # restart
 systemctl --user stop badgerbot       # stop
+# Don't replace --user with your username.
 
 # If you ARE root:
 systemctl status badgerbot            # check if running
