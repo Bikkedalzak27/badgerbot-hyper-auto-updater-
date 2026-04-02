@@ -256,6 +256,23 @@ systemctl stop badgerbot              # stop
 
 ---
 
+## Updating the Bot
+
+From inside your `badgerbot-hyper` folder:
+
+```bash
+git pull
+```
+
+Your `.env` settings file is never touched by updates. If the bot is running as a service, restart it after:
+
+```bash
+systemctl --user restart badgerbot   # non-root
+systemctl restart badgerbot          # root
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
