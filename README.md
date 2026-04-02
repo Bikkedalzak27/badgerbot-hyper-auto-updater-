@@ -215,7 +215,7 @@ Wait until you see this line in the output:
 Starting signal consumer, position monitor, and Telegram bot...
 ```
 
-Then send `/status` to your Telegram bot — it should reply with your account balance. Once you've confirmed it's working, move on to Step 6 to keep it running after you close the terminal.
+On Telegram, send `/status` to your Telegram bot — it should reply with your account balance. Once you've confirmed it's working, move on to Step 6 to keep it running after you close the terminal.
 
 If you see `Missing required environment variables` or `Failed to connect to Hyperliquid`, stop here and check the [Common Issues](#common-issues) section before continuing.
 
