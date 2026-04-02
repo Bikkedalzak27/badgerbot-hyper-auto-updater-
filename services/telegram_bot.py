@@ -674,7 +674,6 @@ class TelegramBot:
         )
 
     async def _send_startup_message(self) -> None:
-        network = "MAINNET" if not self._settings.hl_use_testnet else "TESTNET"
         address = self._settings.hl_account_address
         short_address = f"{address[:6]}...{address[-4:]}"
 
@@ -687,7 +686,6 @@ class TelegramBot:
 
         await self.send(
             f"🟢 BadgerBot Hyper started\n\n"
-            f"🌐 Network: {_b(network)}\n"
             f"👛 Account: {_b(short_address)}\n"
             f"📐 Sizing: {_b(sizing)}\n"
             f"📡 Listening for signals..."

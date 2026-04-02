@@ -24,12 +24,7 @@ _sz_decimals_cache: dict[str, int] = {}
 
 
 def safe_spot_meta(api_url: str) -> dict:
-    """Fetch spot metadata with out-of-bounds universe entries filtered out.
-
-    SDK 0.22.0 crashes in Info.__init__ on testnet when a spot market references
-    a token index beyond the length of spot_meta["tokens"]. Filter those entries
-    before passing spot_meta to Info or Exchange.
-    """
+    """Fetch spot metadata with out-of-bounds universe entries filtered out."""
     raw = API(api_url).post("/info", {"type": "spotMeta"})
     token_count = len(raw.get("tokens", []))
     raw["universe"] = [
@@ -45,15 +40,9 @@ def load_leverage_config() -> dict:
 
 
 def build_exchange(settings: Settings) -> Exchange:
-    api_url = (
-        constants.TESTNET_API_URL
-        if settings.hl_use_testnet
-        else constants.MAINNET_API_URL
-    )
     wallet = eth_account.Account.from_key(settings.hl_api_private_key)
     # account_address required — without it Exchange uses API wallet address (empty account)
-    # spot_meta pre-filtered to work around SDK 0.22.0 testnet IndexError
-    return Exchange(wallet, api_url, account_address=settings.hl_account_address, spot_meta=safe_spot_meta(api_url))
+    return Exchange(wallet, constants.MAINNET_API_URL, account_address=settings.hl_account_address, spot_meta=safe_spot_meta(constants.MAINNET_API_URL))
 
 
 def _fetch_sz_decimals(info: Info) -> dict[str, int]:

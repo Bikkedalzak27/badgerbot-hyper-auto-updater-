@@ -6,8 +6,7 @@ price with a small TP/SL offset. Order size is always the minimum allowed for th
 (10^(-szDecimals)), bypassing equity-based sizing so the order always triggers regardless
 of account balance.
 
-WARNING: This places REAL orders on Hyperliquid on whatever network .env specifies.
-         Ensure HL_USE_TESTNET=true in your .env before running.
+WARNING: This places REAL orders on Hyperliquid mainnet.
 
 Run from the project directory:
     .venv/bin/python simulate_signals.py            # one LONG + one SHORT (default)
@@ -152,8 +151,7 @@ async def execute_with_fixed_size(
 
 async def run_simulation(mode: str) -> None:
     settings = load_settings()
-    network = "TESTNET" if settings.hl_use_testnet else "MAINNET"
-    logger.info(f"Network: {network}")
+    logger.info("Network: MAINNET")
 
     if mode == "both":
         templates = [SIGNAL_TEMPLATES["long"], SIGNAL_TEMPLATES["short"]]
@@ -163,8 +161,7 @@ async def run_simulation(mode: str) -> None:
     directions = [t["mode"] for t in templates]
     logger.info(f"Simulating {len(templates)} signal(s): {directions}, {DELAY_BETWEEN_SIGNALS_SECONDS}s apart")
 
-    api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
-    info = Info(api_url, skip_ws=True, spot_meta=safe_spot_meta(api_url))
+    info = Info(constants.MAINNET_API_URL, skip_ws=True, spot_meta=safe_spot_meta(constants.MAINNET_API_URL))
     exchange = build_exchange(settings)
     leverage_config = load_leverage_config()
 
@@ -175,13 +172,12 @@ async def run_simulation(mode: str) -> None:
     min_size = await fetch_min_size(info, COIN)
 
     async with telegram_bot._app:
-        network = "MAINNET" if not settings.hl_use_testnet else "TESTNET"
         directions = " + ".join(t["mode"] for t in templates)
         await telegram_bot.send(
             f"🧪 Simulation started\n\n"
             f"📊 Directions: {_b(directions)}\n"
             f"🪙 Coin: {_b(COIN)}\n"
-            f"🌐 Network: {_b(network)}"
+            f"🌐 Network: {_b('MAINNET')}"
         )
 
         sim_trade_ids = []

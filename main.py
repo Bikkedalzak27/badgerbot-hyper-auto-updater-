@@ -36,8 +36,7 @@ def configure_logging() -> None:
 
 
 def connect_to_hyperliquid(settings: Settings) -> Info:
-    api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
-    return Info(api_url, skip_ws=True, spot_meta=safe_spot_meta(api_url))
+    return Info(constants.MAINNET_API_URL, skip_ws=True, spot_meta=safe_spot_meta(constants.MAINNET_API_URL))
 
 
 async def create_info(settings: Settings, logger: logging.Logger) -> Info:
@@ -161,9 +160,7 @@ async def _reconcile_orphaned_positions(
 
 
 async def run_startup_check(settings: Settings, info: Info, logger: logging.Logger) -> None:
-    network_label = "TESTNET" if settings.hl_use_testnet else "MAINNET"
-    api_url = constants.TESTNET_API_URL if settings.hl_use_testnet else constants.MAINNET_API_URL
-    logger.info(f"Connecting to Hyperliquid {network_label} ({api_url})")
+    logger.info(f"Connecting to Hyperliquid MAINNET ({constants.MAINNET_API_URL})")
 
     try:
         user_state = await asyncio.to_thread(info.user_state, settings.hl_account_address)
@@ -178,7 +175,7 @@ async def run_startup_check(settings: Settings, info: Info, logger: logging.Logg
     )
     asset_positions = user_state.get("assetPositions", [])
 
-    logger.info(f"Connected to Hyperliquid {network_label}")
+    logger.info("Connected to Hyperliquid MAINNET")
     logger.info(
         f"Account: {settings.hl_account_address} | Equity: ${account_equity:,.2f}"
     )

@@ -23,6 +23,11 @@ Signal-driven perpetual trading bot for [Hyperliquid](https://hyperliquid.xyz). 
 
 Both paths need the same three things. Get these ready before you begin.
 
+**Prerequisites:**
+- A crypto wallet with funds (e.g. [Rabby](https://rabby.io)) to deposit USDC into Hyperliquid
+- An active [BadgerBot](https://badgerbot.io) subscription and API key
+- A Telegram account
+
 ### 1. Hyperliquid API Wallet
 
 Your main Hyperliquid wallet holds your funds. The API wallet is a separate key used only for placing orders — it has no withdrawal rights.
@@ -32,7 +37,7 @@ Your main Hyperliquid wallet holds your funds. The API wallet is a separate key 
 3. Copy the **private key** shown (starts with `0x`) → this is `HL_API_PRIVATE_KEY`
 4. Your main wallet address (the one you log in with) → this is `HL_ACCOUNT_ADDRESS`
 
-> **Start on testnet.** Set `HL_USE_TESTNET=true` and fund a testnet account at [app.hyperliquid.xyz/testnet](https://app.hyperliquid.xyz/testnet) with test USDC. Switch to `false` only after you've verified everything works.
+> **Before trading live**, run the simulation in Step 4 (Path B) or deploy and check `/status` (Path A) to confirm everything is connected correctly.
 
 ### 2. BadgerBot API Key
 
@@ -40,10 +45,12 @@ Log in to your BadgerBot dashboard and copy your API key → this is `BADGERBOT_
 
 ### 3. Telegram Bot + User ID
 
+To control and monitor the trading bot, you'll connect it to a Telegram bot you own.
+
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot`, pick a name and username
 3. BotFather gives you a token like `110201543:AAHdqTcvCH1vGWJxfSeofSs4tDXtoAg` → this is `TELEGRAM_BOT_TOKEN`
-4. To find your numeric user ID, message [@userinfobot](https://t.me/userinfobot) → the number shown is `TELEGRAM_AUTHORIZED_USER_ID`
+4. To find your numeric user ID, message [@userinfobot](https://t.me/userinfobot) and send `test` → the number shown is `TELEGRAM_AUTHORIZED_USER_ID`
 
 ---
 
@@ -83,18 +90,19 @@ The first deploy will fail — that's expected until you add your credentials in
 
 ### Step 4: Add Environment Variables
 
-In your Render service, go to **Environment** and add each variable:
+In your Render service, go to **Environment** and add each variable.
+
+> **These are mandatory** — the bot will not start without them.
 
 | Variable | Value |
 |---|---|
 | `HYPERBOT_DB_PATH` | `/data/hyperbot.db` |
 | `HL_ACCOUNT_ADDRESS` | Your main wallet address |
 | `HL_API_PRIVATE_KEY` | Your API wallet private key |
-| `HL_USE_TESTNET` | `false` |
 | `BADGERBOT_API_KEY` | Your BadgerBot API key |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token |
 | `TELEGRAM_AUTHORIZED_USER_ID` | Your numeric Telegram user ID |
-| `POSITION_SIZE_PCT` | `0.10` |
+| `POSITION_SIZE_PCT` | `0.05` |
 
 ### Step 5: Deploy
 
@@ -140,22 +148,39 @@ bash setup.sh
 
 `setup.sh` creates a `.venv`, installs all four dependencies, and copies `.env.example` to `.env`.
 
+> **Updating later:** run `git pull` inside the `badgerbot-hyper` folder to pull in new code. Your `.env` settings file is never touched by updates.
+
 ### Step 3: Configure .env
 
 ```bash
 nano .env
 ```
 
+> **These credentials are mandatory** — the bot will not start if any are missing. To disable an optional variable, put a `#` in front of it.
+
 Fill in your credentials:
 
 ```env
+# Hyperliquid
 HL_ACCOUNT_ADDRESS=0xYourMainWalletAddress
 HL_API_PRIVATE_KEY=0xYourApiPrivateKey
-HL_USE_TESTNET=false
+
+# Signal source
 BADGERBOT_API_KEY=your-badgerbot-api-key
+
+# Trading parameters
+POSITION_SIZE_PCT=0.05
+# POSITION_SIZE_USD=10         # Fixed margin per trade in USD (overrides PCT if set)
+# RISK_PCT=0.01                # Risk-based sizing: 1% portfolio loss at SL (overrides PCT and USD)
+MAX_SIGNAL_AGE_SECONDS=60
+MAX_PRICE_DEVIATION_PCT=0.01
+
+# Telegram
 TELEGRAM_BOT_TOKEN=110201543:AAHdqTcvCH1vGWJxfSeofSs4tDXtoAg
 TELEGRAM_AUTHORIZED_USER_ID=123456789
-POSITION_SIZE_PCT=0.10
+
+# Monitoring
+POSITION_POLL_INTERVAL_SECONDS=15
 ```
 
 Save with `Ctrl+O`, exit with `Ctrl+X`.
@@ -184,38 +209,48 @@ This opens one ETH LONG and one ETH SHORT at minimum size (~$11 notional each), 
 .venv/bin/python main.py
 ```
 
+Wait until you see this line in the output:
+
+```
+Starting signal consumer, position monitor, and Telegram bot...
+```
+
+Then send `/status` to your Telegram bot — it should reply with your account balance. Once you've confirmed it's working, move on to Step 6 to keep it running after you close the terminal.
+
+If you see `Missing required environment variables` or `Failed to connect to Hyperliquid`, stop here and check the [Common Issues](#common-issues) section before continuing.
+
 ### Step 6: Keep It Running
 
-#### Option A: systemd user service (recommended, no sudo)
+First, check which user you're logged in as — run `whoami`. If you SSHed as `root`, your username is `root`. If you're unsure, the terminal prompt also shows your username at the bottom left (e.g. `root@hostname` or `yourname@hostname`).
 
-Runs as your own user — no root required. Auto-restarts on crash.
+Run this once to keep the bot running after you disconnect or reboot:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+Then install and start the service:
 
 ```bash
 bash install-service.sh
 ```
 
+**Checking status and logs:**
+
 ```bash
+# If you are NOT root (non-root user):
 systemctl --user status badgerbot     # check if running
 journalctl --user -u badgerbot -f     # live log stream
+journalctl --user -u badgerbot -n 100 # last 100 lines
 systemctl --user restart badgerbot    # restart
 systemctl --user stop badgerbot       # stop
-```
 
-> **Auto-start on boot/logout** — by default user services only run while you're logged in. To keep it running after you disconnect or reboot, run this once (requires sudo once only):
-> ```bash
-> sudo loginctl enable-linger $USER
-> ```
-
-#### Option B: tmux (simplest, no sudo)
-
-No installation needed. Does not survive reboots unless you re-attach and restart manually.
-
-```bash
-tmux new -s badgerbot
-.venv/bin/python main.py
-# Ctrl+B, D  — detach (bot keeps running)
-# tmux attach -t badgerbot — reattach
-# Ctrl+C  — stop the bot
+# If you ARE root:
+systemctl status badgerbot            # check if running
+journalctl -u badgerbot -f            # live log stream
+journalctl -u badgerbot -n 100        # last 100 lines
+systemctl restart badgerbot           # restart
+systemctl stop badgerbot              # stop
 ```
 
 ---
@@ -226,11 +261,10 @@ tmux new -s badgerbot
 |---|---|---|---|
 | `HL_ACCOUNT_ADDRESS` | Yes | — | Main wallet address (`0x...`) |
 | `HL_API_PRIVATE_KEY` | Yes | — | API wallet private key — no withdrawal access |
-| `HL_USE_TESTNET` | No | `false` | `true` for testnet, `false` for mainnet |
 | `BADGERBOT_API_KEY` | Yes | — | Signal stream key from BadgerBot dashboard |
 | `TELEGRAM_BOT_TOKEN` | Yes | — | Token from @BotFather |
 | `TELEGRAM_AUTHORIZED_USER_ID` | Yes | — | Your numeric Telegram user ID |
-| `POSITION_SIZE_PCT` | No | `0.10` | Trade notional as fraction of equity |
+| `POSITION_SIZE_PCT` | No | `0.05` | Trade notional as fraction of equity |
 | `POSITION_SIZE_USD` | No | — | Fixed margin per trade in USD — overrides PCT |
 | `RISK_PCT` | No | — | Max loss per trade at SL as fraction of equity — overrides both above |
 | `MAX_SIGNAL_AGE_SECONDS` | No | `60` | Drop signals older than this |
@@ -269,10 +303,10 @@ $20 margin at 10x leverage = $200 notional.
 Notional as a fraction of total equity:
 
 ```env
-POSITION_SIZE_PCT=0.10
+POSITION_SIZE_PCT=0.05
 ```
 
-With $500 equity, each trade opens a $50 notional position. To disable a mode, comment it out or remove the line — do not set it to `false`.
+With $500 equity, each trade opens a $25 notional position. To disable a mode, comment it out or remove the line — do not set it to `false`.
 
 ---
 
@@ -317,11 +351,12 @@ systemctl status badgerbot          # root
 journalctl --user -u badgerbot -f        # live log stream (non-root)
 journalctl --user -u badgerbot -n 100    # last 100 lines (non-root)
 journalctl -u badgerbot -f               # live log stream (root)
+journalctl -u badgerbot -n 100           # last 100 lines (root)
 ```
 
 | Log line | Meaning |
 |---|---|
-| `Active: active (running)` | All good |
+| `Starting signal consumer, position monitor, and Telegram bot...` | All good |
 | `Listening for signals on wss://...` | Connected to BadgerBot signal feed |
 | `WebSocket disconnected` | Signal feed dropped — bot will reconnect automatically |
 | `Signal feed offline` | No message received for 5+ minutes — check your API key |
@@ -329,7 +364,7 @@ journalctl -u badgerbot -f               # live log stream (root)
 | `POSITION UNPROTECTED` | Trade opened but TP/SL placement failed — close it manually |
 | `Market order failed` | Order rejected by Hyperliquid — check account balance and API key |
 | `Missing required environment variables` | `.env` is incomplete — check all required vars are set |
-| `Failed to connect to Hyperliquid` | Network issue or wrong API URL — check `HL_USE_TESTNET` setting |
+| `Failed to connect to Hyperliquid` | Network issue or wrong API URL |
 
 ### Common issues
 
@@ -337,7 +372,7 @@ journalctl -u badgerbot -f               # live log stream (root)
 The Python path in the service file is wrong. Re-run `bash install-service.sh` from inside the `badgerbot-hyper` directory.
 
 **"User or API Wallet does not exist"**
-The API wallet isn't approved for the configured network. Go to [app.hyperliquid.xyz/API](https://app.hyperliquid.xyz/API) and approve it. If using testnet, approval must be done separately at the testnet app.
+The API wallet isn't approved. Go to [app.hyperliquid.xyz/API](https://app.hyperliquid.xyz/API) and approve it.
 
 **No signals appearing**
 Check `/signal` in Telegram. If it shows nothing since restart, verify `BADGERBOT_API_KEY` in `.env` and that your BadgerBot subscription is active.
