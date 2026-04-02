@@ -36,12 +36,7 @@ SERVICE
     systemctl start badgerbot
 
     echo ""
-    echo "Bot is running as a system service."
-    echo ""
-    echo "  systemctl status badgerbot     # check status"
-    echo "  journalctl -u badgerbot -f     # live logs"
-    echo "  systemctl restart badgerbot    # restart"
-    echo "  systemctl stop badgerbot       # stop"
+    echo "Bot is running as a system service. Check the readme to check the status and logs."
 
 else
     # --- Non-root: install as a user service ---
@@ -86,13 +81,5 @@ SERVICE
     systemctl --user start badgerbot
 
     echo ""
-    echo "Bot is running as a user service."
-    echo ""
-    echo "  systemctl --user status badgerbot     # check status"
-    echo "  journalctl --user -u badgerbot -f     # live logs"
-    echo "  systemctl --user restart badgerbot    # restart"
-    echo "  systemctl --user stop badgerbot       # stop"
-    echo ""
-    echo "To keep it running after logout/reboot (requires sudo once):"
-    echo "  sudo loginctl enable-linger \$USER"
+    echo "Bot is running as a user service. Check the readme to check the status and logs."
 fi

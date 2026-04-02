@@ -38,16 +38,9 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
     echo ""
     echo "Created .env from .env.example"
-    echo ""
-    echo "Next: fill in your credentials:"
-    echo "  nano .env"
 else
     echo ".env already exists, skipping."
 fi
 
 echo ""
-echo "Setup complete!"
-echo ""
-echo "  1. Edit credentials:   nano .env"
-echo "  2. Test a trade:       .venv/bin/python simulate_signals.py"
-echo "  3. Start the bot:      .venv/bin/python main.py"
+echo "Dependencies installed, please continue the readme steps."
