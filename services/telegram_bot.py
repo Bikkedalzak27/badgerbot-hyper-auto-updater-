@@ -355,6 +355,37 @@ class TelegramBot:
                 return
             await self._close_single_trade(update, open_trades[index])
 
+    async def _fetch_hl_net_pnl(self, since_iso: str | None = None) -> float | None:
+        """Fetch total net PnL from HL fills + funding, optionally filtered by period."""
+        try:
+            address = self._settings.hl_account_address
+            since_ms = (
+                int(datetime.fromisoformat(since_iso).timestamp() * 1000)
+                if since_iso
+                else 0
+            )
+
+            fills, funding = await asyncio.gather(
+                asyncio.to_thread(self._info.user_fills, address),
+                asyncio.to_thread(
+                    self._info.user_funding_history, address, since_ms, None
+                ),
+            )
+
+            if since_ms:
+                fills = [f for f in fills if f.get("time", 0) >= since_ms]
+
+            gross = sum(float(f.get("closedPnl", 0)) for f in fills)
+            fees = sum(float(f.get("fee", 0)) for f in fills)
+            funding_total = sum(
+                float(h.get("delta", {}).get("usdc", 0)) for h in funding
+            )
+
+            return gross - fees + funding_total
+        except Exception as error:
+            logger.warning(f"Failed to fetch HL PnL data: {error}")
+            return None
+
     async def _fetch_recent_fill_fee(self, coin: str, fill_px: float = 0) -> float:
         """Fetch the most recent close fill fee for a coin. Returns 0.0 on failure."""
         try:
@@ -576,11 +607,16 @@ class TelegramBot:
         losses = [t for t in trades if (net_pnl(t) or 0) < 0]
         win_rate = len(wins) / total * 100
 
-        total_pnl = sum(net_pnl(t) or 0 for t in trades)
         from services.trade_executor import fetch_account_equity
 
         equity = await fetch_account_equity(
             self._info, self._settings.hl_account_address
+        )
+
+        # Headline PnL from HL fills (accurate), fall back to DB sum
+        hl_pnl = await self._fetch_hl_net_pnl(since)
+        total_pnl = (
+            hl_pnl if hl_pnl is not None else sum(net_pnl(t) or 0 for t in trades)
         )
         starting_equity = equity - total_pnl
         total_pct = (total_pnl / starting_equity * 100) if starting_equity > 0 else 0

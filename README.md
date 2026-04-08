@@ -6,9 +6,11 @@ Signal-driven perpetual trading bot for [Hyperliquid](https://hyperliquid.xyz). 
 
 ## Choose Your Path
 
-| | Path A: Render | Path B: VPS / Ubuntu |
+Before starting the installment, determine what type of server you would like to use. In general, a Render service  is easier to install and use yet limits customizability. A VPS / server running on the operating system Ubuntu, has more installment steps yet a larger degree of customizability and more secure (if setup with SSH).
+
+| | Path A: Render | Path B: VPS / Server |
 |---|---|---|
-| Experience needed | None | Basic terminal |
+| Experience needed | None | Basic terminal commands |
 | Setup time | ~15 min | ~20 min |
 | Monthly cost | ~$8 | ~$4+ |
 | Server management | None (browser only) | SSH access |
@@ -27,6 +29,7 @@ Both paths need the same three things. Get these ready before you begin.
 - A crypto wallet with funds (e.g. [Rabby](https://rabby.io)) to deposit USDC into Hyperliquid
 - An active [BadgerBot](https://badgerbot.io) subscription and API key
 - A Telegram account
+- A Render service or VPS / Server running the operating system: Ubuntu.
 
 ### 1. Hyperliquid API Wallet
 
@@ -296,7 +299,7 @@ systemctl restart badgerbot          # root
 
 Three modes, in priority order. Set only one at a time.
 
-### Risk-Based (recommended)
+### Risk-Based (Default)
 
 Size each trade so a stop-loss hit costs exactly X% of your portfolio:
 
@@ -316,7 +319,7 @@ POSITION_SIZE_USD=20
 
 $20 margin at 10x leverage = $200 notional.
 
-### Percentage of Equity (default)
+### Percentage of Equity
 
 Notional as a fraction of total equity:
 
