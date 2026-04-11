@@ -59,6 +59,7 @@ class TelegramBot:
             ("history", self._cmd_history),
             ("position", self._cmd_position),
             ("close", self._cmd_close),
+            ("unprotected", self._cmd_unprotected),
             ("stats", self._cmd_stats),
             ("signal", self._cmd_signal),
             ("help", self._cmd_help),
@@ -354,6 +355,108 @@ class TelegramBot:
                 )
                 return
             await self._close_single_trade(update, open_trades[index])
+
+    async def _cmd_unprotected(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not self._is_authorized(update):
+            return
+
+        from services.position_monitor import find_unprotected_trades
+
+        open_trades = await fetch_open_trades()
+        unprotected = await find_unprotected_trades(
+            self._info, self._settings, open_trades
+        )
+
+        if not unprotected:
+            await update.message.reply_text(
+                "✅ All open positions have live TP/SL orders on Hyperliquid."
+            )
+            return
+
+        args = context.args or []
+
+        if not args:
+            lines = []
+            for trade in unprotected:
+                idx = open_trades.index(trade) + 1
+                entry = float(trade["entry_px"])
+                tp = float(trade["tp_px"])
+                sl = float(trade["sl_px"])
+                lines.append(
+                    f"#{idx} {trade['coin']} {trade['side']}"
+                    f" — entry {_b(f'${entry:,.2f}')}"
+                    f" | TP {_b(f'${tp:,.2f}')}"
+                    f" | SL {_b(f'${sl:,.2f}')}"
+                )
+            count = len(unprotected)
+            await update.message.reply_text(
+                f"⚠️ {count} position{'s' if count > 1 else ''} missing live TP/SL on Hyperliquid:\n\n"
+                + "\n".join(lines)
+                + "\n\nUse /unprotected close to close only these positions.",
+                parse_mode="HTML",
+            )
+            return
+
+        if args[0] != "close":
+            await update.message.reply_text("Usage: /unprotected or /unprotected close")
+            return
+
+        from services.trade_executor import fetch_account_equity
+
+        equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
+
+        lines = []
+        total_pnl = 0.0
+        coins_closed: dict[str, float] = {}
+
+        for trade in unprotected:
+            coin = trade["coin"]
+            size = float(trade["size"])
+            entry_px = float(trade["entry_px"])
+            side = trade["side"]
+            entry_fee = float(trade.get("entry_fee") or 0)
+
+            try:
+                result = await asyncio.to_thread(
+                    self._exchange.market_close, coin, sz=size, slippage=0.02
+                )
+                fill_px = float(
+                    result["response"]["data"]["statuses"][0]["filled"]["avgPx"]
+                )
+            except Exception as error:
+                logger.error(f"Unprotected close failed for trade {trade['id']} ({coin}): {error}")
+                lines.append(f"⚠️ {coin} #{trade['id']} — close failed")
+                continue
+
+            pnl = (fill_px - entry_px) * size if side == "LONG" else (entry_px - fill_px) * size
+            close_fee = await self._fetch_recent_fill_fee(coin, fill_px)
+            net = pnl - entry_fee - close_fee
+            await close_trade(trade["id"], pnl, "MANUAL", close_fee=close_fee)
+            total_pnl += net
+            coins_closed[coin] = coins_closed.get(coin, 0) + size
+
+            direction_emoji = "🟢" if side == "LONG" else "🔴"
+            pnl_sign = "+" if net >= 0 else ""
+            pnl_pct = (net / equity * 100) if equity > 0 else 0
+            lines.append(
+                f"{direction_emoji} {coin} {side} #{trade['id']} CLOSED — MANUAL @ {_b(f'${fill_px:,.2f}')}\n"
+                f"📐 Size: {_b(f'{size} (${size * fill_px:,.2f})')}\n"
+                f"📈 PnL: {_b(f'{pnl_sign}${net:,.2f} ({pnl_sign}{pnl_pct:.2f}%)')}"
+            )
+
+        # Cancel any orphaned trigger orders for fully-closed coins
+        for coin, closed_size in coins_closed.items():
+            remaining = [t for t in open_trades if t["coin"] == coin and t not in unprotected]
+            if not remaining:
+                oids = await self._fetch_all_trigger_oids(coin)
+                await self._cancel_oids(coin, oids)
+
+        total_sign = "+" if total_pnl >= 0 else ""
+        total_pct = (total_pnl / equity * 100) if equity > 0 else 0
+        lines.append(f"💰 Total PnL: {_b(f'{total_sign}${total_pnl:,.2f} ({total_sign}{total_pct:.2f}%)')}")
+        await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
     async def _fetch_hl_net_pnl(self, since_iso: str | None = None) -> float | None:
         """Fetch total net PnL from HL fills + funding, optionally filtered by period."""
@@ -704,6 +807,7 @@ class TelegramBot:
             "▶️ /resume — resume signals\n"
             "📜 /history — last 10 closed trades\n"
             "🔒 /close <number|all> — close a specific trade or all positions\n"
+            "⚠️ /unprotected — view/close positions missing live TP/SL on HL\n"
             "📈 /stats — performance dashboard (or /stats week, /stats month)\n"
             "📡 /signal — recent signal log (filled, rejected, errors)\n"
             "❓ /help — this message"
@@ -752,6 +856,7 @@ class TelegramBot:
                     BotCommand("stats", "📈 Performance dashboard"),
                     BotCommand("signal", "📡 Recent signal log"),
                     BotCommand("close", "🔒 Close trade or all positions"),
+                    BotCommand("unprotected", "⚠️ View/close positions missing TP/SL"),
                     BotCommand("pause", "⏸ Stop processing signals"),
                     BotCommand("resume", "▶️ Resume processing signals"),
                     BotCommand("help", "❓ List all commands"),
