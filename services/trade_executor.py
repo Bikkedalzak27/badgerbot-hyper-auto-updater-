@@ -12,7 +12,7 @@ from hyperliquid.utils import constants
 
 from config.settings import Settings
 from services.signal_consumer import log_signal, validate_signal
-from storage.trade_log import fetch_open_trades, insert_trade, update_entry_fee, update_trade_status
+from storage.trade_log import insert_trade, update_entry_fee, update_trade_status
 
 logger = logging.getLogger("TradeExecutor")
 
@@ -281,7 +281,9 @@ async def _place_tpsl_orders(
     tp_type = {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}}
     sl_type = {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}}
 
-    # positionTpsl grouping: send both TP and SL together as a pair on the existing position.
+    # normalTpsl grouping: pairs TP and SL as an OCO (one-cancels-other) at the order level.
+    # Each lot gets its own independent pair — unlike positionTpsl, placing a new pair does
+    # NOT overwrite TP/SL orders from previous lots on the same coin.
     # exchange.order() uses grouping="na" which HL rejects for trigger orders.
     def _make_order(limit_px, order_type):
         return {
@@ -299,7 +301,7 @@ async def _place_tpsl_orders(
             exchange.bulk_orders,
             [_make_order(tp_limit, tp_type), _make_order(sl_limit, sl_type)],
             None,
-            "positionTpsl",
+            "normalTpsl",
         )
         statuses = result.get("response", {}).get("data", {}).get("statuses", [{}, {}])
         tp_result = {
@@ -385,14 +387,6 @@ async def execute_signal(
         if notify:
             await notify(f"⏭ {coin} {direction} skipped — <code>{rejection}</code>")
         return
-    open_trades = await fetch_open_trades()
-    if any(t["coin"] == coin for t in open_trades):
-        logger.info(f"Signal skipped — existing open position | coin={coin}")
-        log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": "existing position"})
-        if notify:
-            await notify(f"⏭ {coin} {direction} skipped — <code>existing open position</code>")
-        return
-
     logger.info(
         f"EXECUTING: {coin} {'LONG' if is_long else 'SHORT'}"
         f" | size={size} | notional=${size * mark_price:.2f} | leverage={leverage}x"

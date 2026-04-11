@@ -15,6 +15,10 @@ _alerted_orphan_coins: set[str] = set()
 # {coin: {"count": int, "next_log_at": int}} — tracks fill retry backoff per coin
 _fill_retry_state: dict[str, dict] = {}
 
+# {trade_id: last_notified_monotonic} — throttles unprotected-trade alerts (1h cooldown)
+_unprotected_alert_state: dict[int, float] = {}
+UNPROTECTED_ALERT_COOLDOWN_SECONDS = 3600
+
 
 async def _cancel_counterpart_order(
     exchange: Exchange,
@@ -398,6 +402,76 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
             await notify(msg)
 
 
+async def _check_unprotected_trades(info: Info, settings: Settings, notify) -> None:
+    """Alert when open DB trades have no matching live TP or SL order on HL."""
+    import time
+
+    open_trades = await fetch_open_trades()
+    if not open_trades:
+        _unprotected_alert_state.clear()
+        return
+
+    try:
+        orders = await asyncio.to_thread(
+            info.frontend_open_orders, settings.hl_account_address
+        )
+    except Exception as error:
+        logger.warning(f"Discrepancy check: failed to fetch orders | {error}")
+        return
+
+    # Index trigger orders by coin for fast lookup
+    trigger_orders: dict[str, list[dict]] = {}
+    for o in orders:
+        if o.get("triggerPx"):
+            trigger_orders.setdefault(o["coin"], []).append(o)
+
+    now = time.monotonic()
+    for trade in open_trades:
+        coin = trade["coin"]
+        trade_id = trade["id"]
+        tp_px = float(trade["tp_px"])
+        sl_px = float(trade["sl_px"])
+        size = float(trade["size"])
+
+        coin_orders = trigger_orders.get(coin, [])
+        has_tp = any(
+            abs(float(o.get("triggerPx", 0)) - tp_px) / tp_px < 0.001
+            and abs(float(o.get("sz", 0)) - size) / size < 0.01
+            for o in coin_orders
+        )
+        has_sl = any(
+            abs(float(o.get("triggerPx", 0)) - sl_px) / sl_px < 0.001
+            and abs(float(o.get("sz", 0)) - size) / size < 0.01
+            for o in coin_orders
+        )
+
+        if has_tp and has_sl:
+            _unprotected_alert_state.pop(trade_id, None)
+            continue
+
+        last_alerted = _unprotected_alert_state.get(trade_id, 0.0)
+        if now - last_alerted < UNPROTECTED_ALERT_COOLDOWN_SECONDS:
+            continue
+
+        missing = []
+        if not has_tp:
+            missing.append(f"TP @ <code>${tp_px:,.2f}</code>")
+        if not has_sl:
+            missing.append(f"SL @ <code>${sl_px:,.2f}</code>")
+        missing_str = " and ".join(missing)
+
+        logger.warning(
+            f"No live {' and '.join(['TP' if not has_tp else '', 'SL' if not has_sl else '']).strip(' and ')} "
+            f"order found for trade #{trade_id} | coin={coin} | tp={tp_px} | sl={sl_px}"
+        )
+        await notify(
+            f"⚠️ {coin} trade #{trade_id} has no live {missing_str} on Hyperliquid\n\n"
+            f"📐 Size: <code>{size}</code> | Entry: <code>${float(trade['entry_px']):,.2f}</code>\n"
+            f"Use /close {trade_id} or set orders manually on HL."
+        )
+        _unprotected_alert_state[trade_id] = now
+
+
 async def run_position_monitor(
     info, settings, notify, stop_event: asyncio.Event, exchange: Exchange = None
 ) -> None:
@@ -406,6 +480,7 @@ async def run_position_monitor(
     while not stop_event.is_set():
         try:
             await _check_closed_positions(info, settings, notify, exchange)
+            await _check_unprotected_trades(info, settings, notify)
         except Exception as error:
             logger.error(f"Poll cycle error: {error}", exc_info=True)
 
