@@ -424,6 +424,13 @@ Any coin not listed uses the `DEFAULT` value. Restart the bot after making chang
 
 ## Changelog
 
+**v0.4 — April 11, 2026**
+
+- Adjusted MAX_PRICE_DEVIATION_PCT functionality to ensure not entering with a to low take profit percentage. If take profit percentage upon entry decreases by 50% (0.5) compared to original take profit, no entry is executed.
+- Removed old MAX_PRICE_DEVIATION_PCT system which prohibited entry if entry price deviates 1% from original entry price. Danger is when the original take profit is below 1%.
+- Added custom take profit & stop loss logging for every single trade per candle, not each group of trades.
+- Added Telegram commands to close / check trades with deviated or no TP / SL's. Use /unprotected & /unprotected_close for this.
+
 **v0.3 — March 30–31, 2026**
 
 - Net PnL tracking: trading fees (entry + close) stored per trade. All PnL values in `/stats`, `/history`, `/close`, and close notifications show net PnL after fees.
