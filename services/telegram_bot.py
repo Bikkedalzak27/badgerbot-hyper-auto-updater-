@@ -60,6 +60,7 @@ class TelegramBot:
             ("position", self._cmd_position),
             ("close", self._cmd_close),
             ("unprotected", self._cmd_unprotected),
+            ("unprotected_close", self._cmd_unprotected_close),
             ("stats", self._cmd_stats),
             ("signal", self._cmd_signal),
             ("help", self._cmd_help),
@@ -375,35 +376,45 @@ class TelegramBot:
             )
             return
 
-        args = context.args or []
+        lines = []
+        for trade in unprotected:
+            idx = open_trades.index(trade) + 1
+            entry = float(trade["entry_px"])
+            tp = float(trade["tp_px"])
+            sl = float(trade["sl_px"])
+            lines.append(
+                f"#{idx} {trade['coin']} {trade['side']}"
+                f" — entry {_b(f'${entry:,.2f}')}"
+                f" | TP {_b(f'${tp:,.2f}')}"
+                f" | SL {_b(f'${sl:,.2f}')}"
+            )
+        count = len(unprotected)
+        await update.message.reply_text(
+            f"⚠️ {count} position{'s' if count > 1 else ''} missing live TP/SL on Hyperliquid:\n\n"
+            + "\n".join(lines)
+            + "\n\nUse /unprotected_close to close only these positions.",
+            parse_mode="HTML",
+        )
 
-        if not args:
-            lines = []
-            for trade in unprotected:
-                idx = open_trades.index(trade) + 1
-                entry = float(trade["entry_px"])
-                tp = float(trade["tp_px"])
-                sl = float(trade["sl_px"])
-                lines.append(
-                    f"#{idx} {trade['coin']} {trade['side']}"
-                    f" — entry {_b(f'${entry:,.2f}')}"
-                    f" | TP {_b(f'${tp:,.2f}')}"
-                    f" | SL {_b(f'${sl:,.2f}')}"
-                )
-            count = len(unprotected)
+    async def _cmd_unprotected_close(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not self._is_authorized(update):
+            return
+
+        from services.position_monitor import find_unprotected_trades
+        from services.trade_executor import fetch_account_equity
+
+        open_trades = await fetch_open_trades()
+        unprotected = await find_unprotected_trades(
+            self._info, self._settings, open_trades
+        )
+
+        if not unprotected:
             await update.message.reply_text(
-                f"⚠️ {count} position{'s' if count > 1 else ''} missing live TP/SL on Hyperliquid:\n\n"
-                + "\n".join(lines)
-                + "\n\nUse /unprotected close to close only these positions.",
-                parse_mode="HTML",
+                "✅ All open positions have live TP/SL orders on Hyperliquid."
             )
             return
-
-        if args[0] != "close":
-            await update.message.reply_text("Usage: /unprotected or /unprotected close")
-            return
-
-        from services.trade_executor import fetch_account_equity
 
         equity = await fetch_account_equity(self._info, self._settings.hl_account_address)
 
@@ -807,7 +818,8 @@ class TelegramBot:
             "▶️ /resume — resume signals\n"
             "📜 /history — last 10 closed trades\n"
             "🔒 /close <number|all> — close a specific trade or all positions\n"
-            "⚠️ /unprotected — view/close positions missing live TP/SL on HL\n"
+            "⚠️ /unprotected — view positions missing live TP/SL on HL\n"
+            "🚨 /unprotected_close — close positions missing live TP/SL on HL\n"
             "📈 /stats — performance dashboard (or /stats week, /stats month)\n"
             "📡 /signal — recent signal log (filled, rejected, errors)\n"
             "❓ /help — this message"
@@ -856,7 +868,8 @@ class TelegramBot:
                     BotCommand("stats", "📈 Performance dashboard"),
                     BotCommand("signal", "📡 Recent signal log"),
                     BotCommand("close", "🔒 Close trade or all positions"),
-                    BotCommand("unprotected", "⚠️ View/close positions missing TP/SL"),
+                    BotCommand("unprotected", "⚠️ View positions missing TP/SL"),
+                    BotCommand("unprotected_close", "🚨 Close positions missing TP/SL"),
                     BotCommand("pause", "⏸ Stop processing signals"),
                     BotCommand("resume", "▶️ Resume processing signals"),
                     BotCommand("help", "❓ List all commands"),

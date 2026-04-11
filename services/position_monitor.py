@@ -468,7 +468,7 @@ async def _check_unprotected_trades(info: Info, settings: Settings, notify) -> N
     await notify(
         f"⚠️ {count} open position{'s' if count > 1 else ''} "
         f"{'are' if count > 1 else 'is'} missing live TP/SL orders on Hyperliquid.\n\n"
-        f"Use /unprotected to view and close them."
+        f"Use /unprotected to view them, or /unprotected_close to close them."
     )
     _last_unprotected_alert = now
 
