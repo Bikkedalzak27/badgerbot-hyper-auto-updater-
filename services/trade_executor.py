@@ -12,7 +12,7 @@ from hyperliquid.utils import constants
 
 from config.settings import Settings
 from services.signal_consumer import log_signal, validate_signal
-from storage.trade_log import insert_trade, update_entry_fee, update_trade_status
+from storage.trade_log import fetch_open_trades, insert_trade, update_entry_fee, update_trade_status
 
 logger = logging.getLogger("TradeExecutor")
 
@@ -385,6 +385,14 @@ async def execute_signal(
         if notify:
             await notify(f"⏭ {coin} {direction} skipped — <code>{rejection}</code>")
         return
+    open_trades = await fetch_open_trades()
+    if any(t["coin"] == coin for t in open_trades):
+        logger.info(f"Signal skipped — existing open position | coin={coin}")
+        log_signal({"coin": coin, "side": direction, "outcome": "rejected", "reason": "existing position"})
+        if notify:
+            await notify(f"⏭ {coin} {direction} skipped — <code>existing open position</code>")
+        return
+
     logger.info(
         f"EXECUTING: {coin} {'LONG' if is_long else 'SHORT'}"
         f" | size={size} | notional=${size * mark_price:.2f} | leverage={leverage}x"
