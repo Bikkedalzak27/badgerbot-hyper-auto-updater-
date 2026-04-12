@@ -88,14 +88,14 @@ def validate_signal(signal: dict, mark_price: float, settings: Settings) -> str 
 
     signal_price = float(signal["price"])
     tp_price = float(signal["tp_price"])
-    tp_pct_original = abs((tp_price - signal_price) / signal_price * 100)
-    tp_pct_remaining = abs((tp_price - mark_price) / mark_price * 100)
+    tp_distance = abs(tp_price - signal_price)
+    tp_remaining = abs(tp_price - mark_price)
 
-    if tp_pct_remaining < tp_pct_original * settings.max_price_deviation_pct:
-        reason = f"TP eroded ({tp_pct_remaining:.1f}% of original {tp_pct_original:.1f}%)"
+    if tp_remaining < tp_distance * settings.max_price_deviation_pct:
+        reason = f"TP eroded ({tp_remaining:.4f} of original {tp_distance:.4f})"
         logger.warning(
-            f"Signal dropped: TP remaining {tp_pct_remaining:.2f}% < threshold"
-            f" {tp_pct_original * settings.max_price_deviation_pct:.2f}%"
+            f"Signal dropped: TP remaining {tp_remaining:.4f} < threshold"
+            f" {tp_distance * settings.max_price_deviation_pct:.4f}"
             f" | coin={signal['coin_symbol']} | signal={signal_price} | mark={mark_price}"
             f" | tp={tp_price}"
         )
