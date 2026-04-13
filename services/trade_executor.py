@@ -281,10 +281,10 @@ async def _place_tpsl_orders(
     tp_type = {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}}
     sl_type = {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}}
 
-    # normalTpsl grouping: pairs TP and SL as an OCO (one-cancels-other) at the order level.
-    # Each lot gets its own independent pair — unlike positionTpsl, placing a new pair does
-    # NOT overwrite TP/SL orders from previous lots on the same coin.
-    # exchange.order() uses grouping="na" which HL rejects for trigger orders.
+    # positionTpsl grouping: sets position-level TP/SL as an OCO pair.
+    # Note: placing a new pair via positionTpsl overwrites any existing position-level
+    # TP/SL for this coin — normalTpsl is not usable here because HL rejects standalone
+    # trigger orders (no entry order) as the "main" order in that grouping.
     def _make_order(limit_px, order_type):
         return {
             "coin": coin,
@@ -301,7 +301,7 @@ async def _place_tpsl_orders(
             exchange.bulk_orders,
             [_make_order(tp_limit, tp_type), _make_order(sl_limit, sl_type)],
             None,
-            "normalTpsl",
+            "positionTpsl",
         )
         statuses = result.get("response", {}).get("data", {}).get("statuses", [{}, {}])
         tp_result = {
