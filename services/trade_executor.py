@@ -257,9 +257,12 @@ async def _open_with_tpsl(
 
     closing_is_buy = not is_long
 
-    # Entry: aggressive GTC limit so it fills immediately as a taker.
-    # 2% slippage buffer matches the previous market_open slippage.
-    entry_slippage = 0.02
+    # Entry: GTC limit priced just past the current mid to fill as a taker immediately.
+    # 0.1% is more than enough to cross the spread on HL perps — we don't need 2% here
+    # because the limit is just a ceiling, not what we actually pay (fill is at the ask).
+    # MAX_PRICE_DEVIATION_PCT is the quality gate for stale/drifted signals; this slippage
+    # is purely mechanical to ensure immediate fill.
+    entry_slippage = 0.001
     entry_limit = _round_price(
         exchange, coin, mark_price * (1 + entry_slippage if is_long else 1 - entry_slippage)
     )
