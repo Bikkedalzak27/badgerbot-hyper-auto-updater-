@@ -33,7 +33,8 @@ Both paths need the same three things. Get these ready before you begin.
 
 ### 1. Hyperliquid API Wallet
 
-Your main Hyperliquid wallet holds your funds. The API wallet is a separate key used only for placing orders — it has no withdrawal rights.
+To run the bot on Hyperliquid, an API key is required. The API key is only used for placing orders — it has no withdrawal rights. 
+Before requesting an API key, it is required to deposit funds on the platform which can be done by pressing the 'Deposit' button on [https://app.hyperliquid.xyz/portfolio].
 
 1. Go to [app.hyperliquid.xyz/API](https://app.hyperliquid.xyz/API)
 2. Click **Generate** to create an API wallet
