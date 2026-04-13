@@ -42,8 +42,8 @@ Both paths need the same three things. Get these ready before you begin.
 
 **Prerequisites:**
 - A crypto wallet with funds (e.g. [Rabby](https://rabby.io)) to deposit USDC into Hyperliquid
-- An active [BadgerBot](https://badgerbot.io) subscription and API key
 - A Telegram account
+- An active [BadgerBot](https://badgerbot.io) subscription and API key
 - A Render service or VPS / Server running the operating system: Ubuntu.
 
 ### 1. Hyperliquid API Wallet
@@ -53,8 +53,8 @@ Before requesting an API key, it is required to deposit funds on the platform wh
 
 1. Go to [app.hyperliquid.xyz/API](https://app.hyperliquid.xyz/API)
 2. Click **Generate** to create an API wallet
-3. Copy the **private key** shown (starts with `0x`) → this is `HL_API_PRIVATE_KEY`
-4. Your main wallet address (the one you log in with) → this is `HL_ACCOUNT_ADDRESS`
+3. Copy the **private key** shown (starts with `0x`) and temporary store it
+4. Your main wallet address (the one you log in with)
 
 > **Before trading live**, run the simulation in Step 4 (Path B) or deploy and check `/status` (Path A) to confirm everything is connected correctly.
 
