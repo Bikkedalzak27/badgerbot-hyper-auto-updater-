@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
 from typing import Callable, Awaitable
 
 import websockets
@@ -76,16 +75,6 @@ def parse_signal(raw_message: str) -> dict | None:
 
 def validate_signal(signal: dict, mark_price: float, settings: Settings) -> str | None:
     """Returns None if valid, or a rejection reason string."""
-    dispatched_at = datetime.fromisoformat(signal["dispatched_at"]).replace(tzinfo=timezone.utc)
-    age_seconds = (datetime.now(timezone.utc) - dispatched_at).total_seconds()
-
-    if age_seconds > settings.max_signal_age_seconds:
-        reason = f"stale ({age_seconds:.0f}s)"
-        logger.warning(
-            f"Signal dropped: stale by {age_seconds:.0f}s | coin={signal['coin_symbol']}"
-        )
-        return reason
-
     signal_price = float(signal["price"])
     tp_price = float(signal["tp_price"])
     tp_distance = abs(tp_price - signal_price)
