@@ -56,8 +56,6 @@ Before requesting an API key, it is required to deposit funds on the platform wh
 3. Copy the **private key** shown (starts with `0x`) and temporary store it
 4. Your main wallet address (the one you log in with)
 
-> **Before trading live**, run the simulation in Step 4 (Path B) or deploy and check `/status` (Path A) to confirm everything is connected correctly.
-
 ### 2. BadgerBot API Key
 
 Log in to your BadgerBot dashboard and copy your API key → this is `BADGERBOT_API_KEY`.
