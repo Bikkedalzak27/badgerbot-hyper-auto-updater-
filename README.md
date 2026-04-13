@@ -4,6 +4,21 @@ Signal-driven perpetual trading bot for [Hyperliquid](https://hyperliquid.xyz). 
 
 ---
 
+## ⚠️ Disclaimer
+
+> **This project is for educational purposes only.**
+
+- **Not financial advice.** Nothing in this repository constitutes financial, investment, or trading advice of any kind.
+- **Risk of total loss.** Cryptocurrency trading is highly speculative. You may lose some or all of your funds. Never trade with money you cannot afford to lose.
+- **High volatility.** Crypto markets are extremely volatile and unpredictable. Automated bots do not eliminate or reduce this risk.
+- **No performance guarantees.** Past results, backtests, or examples shown do not guarantee future performance.
+- **Your responsibility.** By using this software, you accept full responsibility for any financial outcomes. The author(s) are not liable for any losses incurred.
+- **Consult a professional.** Before engaging in any trading activity, consider seeking advice from a licensed financial advisor.
+
+*By installing or using this bot, you acknowledge that you have read and understood this disclaimer.*
+
+---
+
 ## Choose Your Path
 
 Before starting the installment, determine what type of server you would like to use. In general, a Render service  is easier to install and use yet limits customizability. A VPS / server running on the operating system Ubuntu, has more installment steps yet a larger degree of customizability and more secure (if setup with SSH).
