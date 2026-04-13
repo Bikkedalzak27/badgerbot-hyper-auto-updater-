@@ -47,7 +47,7 @@ def load_settings() -> Settings:
         position_size_pct=float(os.getenv("POSITION_SIZE_PCT", "0.10")),
         position_size_usd=float(v) if (v := os.getenv("POSITION_SIZE_USD")) else None,
         risk_pct=float(v) if (v := os.getenv("RISK_PCT")) else None,
-        max_signal_age_seconds=int(os.getenv("MAX_SIGNAL_AGE_SECONDS", "1200")),
+        max_signal_age_seconds=int(os.getenv("MAX_SIGNAL_AGE_SECONDS", "60")),
         max_price_deviation_pct=float(os.getenv("MAX_PRICE_DEVIATION_PCT", "0.01")),
         telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
         telegram_authorized_user_id=int(os.environ["TELEGRAM_AUTHORIZED_USER_ID"]),
