@@ -177,7 +177,7 @@ nano .env
 
 Fill in your credentials:
 
-```env
+```env (mandatory credentials)
 # Hyperliquid
 HL_ACCOUNT_ADDRESS=0xYourMainWalletAddress
 HL_API_PRIVATE_KEY=0xYourApiPrivateKey
@@ -185,19 +185,9 @@ HL_API_PRIVATE_KEY=0xYourApiPrivateKey
 # Signal source
 BADGERBOT_API_KEY=your-badgerbot-api-key
 
-# Trading parameters
-POSITION_SIZE_PCT=0.05
-# POSITION_SIZE_USD=10         # Fixed margin per trade in USD (overrides PCT if set)
-# RISK_PCT=0.01                # Risk-based sizing: 1% portfolio loss at SL (overrides PCT and USD)
-MAX_SIGNAL_AGE_SECONDS=60
-MAX_PRICE_DEVIATION_PCT=0.01
-
 # Telegram
 TELEGRAM_BOT_TOKEN=110201543:AAHdqTcvCH1vGWJxfSeofSs4tDXtoAg
 TELEGRAM_AUTHORIZED_USER_ID=123456789
-
-# Monitoring
-POSITION_POLL_INTERVAL_SECONDS=15
 ```
 
 Save with `Ctrl+O`, exit with `Ctrl+X`.
