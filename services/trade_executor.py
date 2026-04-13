@@ -215,41 +215,8 @@ def _fetch_post_trade_state(info: Info, address: str, coin: str) -> dict:
     }
 
 
-async def _enter_position(
-    exchange: Exchange, coin: str, is_long: bool, size: float, leverage: int
-) -> float | None:
-    await asyncio.to_thread(exchange.update_leverage, leverage, coin, True)
-    logger.info(f"Leverage set: {coin} {leverage}x cross")
-    entry_result = await asyncio.to_thread(
-        exchange.market_open, coin, is_long, size, None, 0.02
-    )
-    if entry_result.get("status") != "ok":
-        logger.error(f"Market order failed | coin={coin} | result={entry_result}")
-        return None
-    try:
-        fill_price = float(
-            entry_result["response"]["data"]["statuses"][0]["filled"]["avgPx"]
-        )
-    except (KeyError, IndexError, TypeError) as error:
-        logger.error(f"Order did not fill | coin={coin} | {error}")
-        return None
-    logger.info(f"Entry filled @ {fill_price} | coin={coin}")
-    return fill_price
-
-
-def _tpsl_order_ok(result: dict, label: str, coin: str) -> bool:
-    # Top-level "ok" is necessary but not sufficient — the API silently fails
-    # trigger orders by embedding the error in response.data.statuses[0].
-    if result.get("status") != "ok":
-        logger.error(f"{label} placement failed | coin={coin} | result={result}")
-        return False
-    try:
-        inner = result["response"]["data"]["statuses"][0]
-    except (KeyError, IndexError, TypeError):
-        logger.error(
-            f"{label} placement — unreadable inner status | coin={coin} | result={result}"
-        )
-        return False
+def _tpsl_status_ok(inner, label: str, coin: str) -> bool:
+    """Check a single status item from a bulk_orders response."""
     # Trigger orders return the string "waitingForTrigger" on success.
     if inner == "waitingForTrigger":
         return True
@@ -265,65 +232,120 @@ def _tpsl_order_ok(result: dict, label: str, coin: str) -> bool:
     return False
 
 
-async def _place_tpsl_orders(
+async def _open_with_tpsl(
     exchange: Exchange,
     coin: str,
-    closing_is_buy: bool,
+    is_long: bool,
     size: float,
+    leverage: int,
     tp_price: float,
     sl_price: float,
-) -> tuple[bool, bool]:
-    # Round trigger prices to 5 significant figures — HL rejects prices with 6+ sig figs.
+    mark_price: float,
+) -> tuple[float | None, bool, bool]:
+    """
+    Opens a position and places per-lot TP/SL atomically via normalTpsl grouping.
+
+    normalTpsl requires a non-trigger entry order as the first order in the batch —
+    the TP and SL trigger orders are paired to that specific lot, giving each lot its
+    own independent OCO pair (unlike positionTpsl, which is position-level and would
+    overwrite TP/SL from other lots on the same coin).
+
+    Returns (fill_price, tp_ok, sl_ok). fill_price is None on entry failure.
+    """
+    await asyncio.to_thread(exchange.update_leverage, leverage, coin, True)
+    logger.info(f"Leverage set: {coin} {leverage}x cross")
+
+    closing_is_buy = not is_long
+
+    # Entry: aggressive GTC limit so it fills immediately as a taker.
+    # 2% slippage buffer matches the previous market_open slippage.
+    entry_slippage = 0.02
+    entry_limit = _round_price(
+        exchange, coin, mark_price * (1 + entry_slippage if is_long else 1 - entry_slippage)
+    )
+
+    # Round trigger prices to 5 significant figures — HL rejects 6+ sig figs.
     tp_price = _round_price(exchange, coin, tp_price)
     sl_price = _round_price(exchange, coin, sl_price)
     tp_limit = _trigger_limit_px(exchange, coin, closing_is_buy, tp_price)
     sl_limit = _trigger_limit_px(exchange, coin, closing_is_buy, sl_price)
-    tp_type = {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}}
-    sl_type = {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}}
 
-    # positionTpsl grouping: sets position-level TP/SL as an OCO pair.
-    # Note: placing a new pair via positionTpsl overwrites any existing position-level
-    # TP/SL for this coin — normalTpsl is not usable here because HL rejects standalone
-    # trigger orders (no entry order) as the "main" order in that grouping.
-    def _make_order(limit_px, order_type):
-        return {
+    orders = [
+        {   # Entry order — the "main" order required by normalTpsl
+            "coin": coin,
+            "is_buy": is_long,
+            "sz": size,
+            "limit_px": entry_limit,
+            "order_type": {"limit": {"tif": "Gtc"}},
+            "reduce_only": False,
+        },
+        {   # Take profit
             "coin": coin,
             "is_buy": closing_is_buy,
             "sz": size,
-            "limit_px": limit_px,
-            "order_type": order_type,
+            "limit_px": tp_limit,
+            "order_type": {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}},
             "reduce_only": True,
-        }
+        },
+        {   # Stop loss
+            "coin": coin,
+            "is_buy": closing_is_buy,
+            "sz": size,
+            "limit_px": sl_limit,
+            "order_type": {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}},
+            "reduce_only": True,
+        },
+    ]
 
-    tp_ok, sl_ok = False, False
     try:
         result = await asyncio.to_thread(
             exchange.bulk_orders,
-            [_make_order(tp_limit, tp_type), _make_order(sl_limit, sl_type)],
+            orders,
             None,
-            "positionTpsl",
+            "normalTpsl",
         )
-        statuses = result.get("response", {}).get("data", {}).get("statuses", [{}, {}])
-        tp_result = {
-            "status": result.get("status"),
-            "response": {"type": "order", "data": {"statuses": [statuses[0]]}},
-        }
-        sl_result = {
-            "status": result.get("status"),
-            "response": {
-                "type": "order",
-                "data": {"statuses": [statuses[1] if len(statuses) > 1 else {}]},
-            },
-        }
-        tp_ok = _tpsl_order_ok(tp_result, "TP", coin)
-        sl_ok = _tpsl_order_ok(sl_result, "SL", coin)
-        if tp_ok:
-            logger.info(f"TP placed @ {tp_price} (limit={tp_limit}) | coin={coin}")
-        if sl_ok:
-            logger.info(f"SL placed @ {sl_price} (limit={sl_limit}) | coin={coin}")
     except Exception as error:
-        logger.error(f"TP/SL placement exception | coin={coin} | {error}")
-    return tp_ok, sl_ok
+        logger.error(f"Entry+TP/SL order exception | coin={coin} | {error}")
+        return None, False, False
+
+    if result.get("status") != "ok":
+        logger.error(f"Entry+TP/SL placement failed | coin={coin} | result={result}")
+        return None, False, False
+
+    statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+
+    # Parse entry fill (statuses[0])
+    fill_price = None
+    entry_inner = statuses[0] if statuses else {}
+    if isinstance(entry_inner, dict):
+        if "filled" in entry_inner:
+            fill_price = float(entry_inner["filled"]["avgPx"])
+            logger.info(f"Entry filled @ {fill_price} | coin={coin}")
+        elif "resting" in entry_inner:
+            # Order is pending (unusual with aggressive pricing) — TP/SL are still paired
+            fill_price = entry_limit
+            logger.warning(
+                f"Entry resting @ limit={entry_limit} (not filled immediately) | coin={coin}"
+            )
+        elif "error" in entry_inner:
+            logger.error(f"Entry order error | coin={coin} | error={entry_inner['error']}")
+            return None, False, False
+    else:
+        logger.error(f"Entry — unexpected status | coin={coin} | inner={entry_inner}")
+        return None, False, False
+
+    # Parse TP/SL statuses (statuses[1] and statuses[2])
+    tp_inner = statuses[1] if len(statuses) > 1 else {}
+    sl_inner = statuses[2] if len(statuses) > 2 else {}
+    tp_ok = _tpsl_status_ok(tp_inner, "TP", coin)
+    sl_ok = _tpsl_status_ok(sl_inner, "SL", coin)
+
+    if tp_ok:
+        logger.info(f"TP placed @ {tp_price} (limit={tp_limit}) | coin={coin}")
+    if sl_ok:
+        logger.info(f"SL placed @ {sl_price} (limit={sl_limit}) | coin={coin}")
+
+    return fill_price, tp_ok, sl_ok
 
 
 async def _capture_entry_fee(
@@ -392,7 +414,9 @@ async def execute_signal(
         f" | size={size} | notional=${size * mark_price:.2f} | leverage={leverage}x"
     )
 
-    fill_price = await _enter_position(exchange, coin, is_long, size, leverage)
+    fill_price, tp_ok, sl_ok = await _open_with_tpsl(
+        exchange, coin, is_long, size, leverage, tp_price, sl_price, mark_price
+    )
     if fill_price is None:
         log_signal(
             {
@@ -408,12 +432,8 @@ async def execute_signal(
             )
         return
 
-    # Write trade record BEFORE TP/SL — Financial Safety Rule #4
+    # Write trade record immediately after entry — Financial Safety Rule #4
     trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
-
-    tp_ok, sl_ok = await _place_tpsl_orders(
-        exchange, coin, not is_long, size, tp_price, sl_price
-    )
 
     direction_emoji = "🟢" if is_long else "🔴"
 
