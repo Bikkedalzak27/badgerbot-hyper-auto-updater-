@@ -29,9 +29,8 @@ from hyperliquid.utils import constants
 from config.settings import load_settings
 from services.telegram_bot import BotState, TelegramBot
 from services.trade_executor import (
-    _enter_position,
     _fetch_post_trade_state,
-    _place_tpsl_orders,
+    _open_with_tpsl,
     build_exchange,
     load_leverage_config,
     safe_spot_meta,
@@ -116,13 +115,15 @@ async def execute_with_fixed_size(
     sl_price = float(signal["sl_price"])
     leverage = leverage_config.get(coin, leverage_config.get("DEFAULT", 3))
 
-    fill_price = await _enter_position(exchange, coin, is_long=is_long, size=size, leverage=leverage)
+    fill_price, tp_ok, sl_ok = await _open_with_tpsl(
+        exchange, coin, is_long=is_long, size=size, leverage=leverage,
+        tp_price=tp_price, sl_price=sl_price, mark_price=float(signal["price"])
+    )
     if fill_price is None:
         logger.error(f"Entry failed | coin={coin}")
         return None
 
     trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
-    tp_ok, sl_ok = await _place_tpsl_orders(exchange, coin, not is_long, size, tp_price, sl_price)
 
     if not tp_ok or not sl_ok:
         await update_trade_status(trade_id, "UNPROTECTED")

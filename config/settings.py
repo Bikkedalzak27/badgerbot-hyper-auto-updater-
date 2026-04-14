@@ -44,7 +44,7 @@ def load_settings() -> Settings:
         hl_account_address=os.environ["HL_ACCOUNT_ADDRESS"],
         hl_api_private_key=os.environ["HL_API_PRIVATE_KEY"],
         badgerbot_api_key=os.environ["BADGERBOT_API_KEY"],
-        position_size_pct=float(os.getenv("POSITION_SIZE_PCT", "0.10")),
+        position_size_pct=float(os.getenv("POSITION_SIZE_PCT", "0.05")),
         position_size_usd=float(v) if (v := os.getenv("POSITION_SIZE_USD")) else None,
         risk_pct=float(v) if (v := os.getenv("RISK_PCT")) else None,
         max_signal_age_seconds=int(os.getenv("MAX_SIGNAL_AGE_SECONDS", "60")),
