@@ -428,6 +428,13 @@ Any coin not listed uses the `DEFAULT` value. Restart the bot after making chang
 
 ## Changelog
 
+**v0.5 — April 14, 2026**
+
+- Switched from market order entry with separately placed TP/SL to an atomic entry limit order + TP/SL via `normalTpsl` grouping. Entry and both trigger orders are submitted in a single request, giving each lot its own independent OCO pair. This replaces the old flow where HL rejected standalone trigger orders placed after entry with "Main order cannot be trigger order."
+- Entry limit slippage reduced from 2% to 0.1%. The limit price is purely a ceiling to guarantee immediate fill — actual fill happens at the best available ask.
+- Re-introduced `MAX_SIGNAL_AGE_SECONDS` (default: 60s) to guard against bot-side processing lag causing stale signal entries.
+- Fixed: signal is now dropped if the mark price is already at or past the TP at validation time (LONG: mark ≥ TP, SHORT: mark ≤ TP). Prevents entering a position where the entry price has slipped past the take profit target.
+
 **v0.4 — April 11, 2026**
 
 - Adjusted MAX_PRICE_DEVIATION_PCT functionality to ensure not entering with a to low profit potential. If distance between original take profit and entry price decreases by 50% (0.5), no entry is executed.
