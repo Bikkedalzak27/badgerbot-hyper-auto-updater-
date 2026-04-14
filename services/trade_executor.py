@@ -123,6 +123,16 @@ async def _validate_and_size(
     rejection = validate_signal(signal, mark_price, settings)
     if rejection:
         return mark_price, 0, 0, leverage, rejection
+    is_long = signal["mode"] == "LONG"
+    tp_price = float(signal["tp_price"])
+    if is_long and mark_price >= tp_price:
+        rejection = f"mark price {mark_price} already at or past TP {tp_price}"
+        logger.warning(f"Signal dropped: {rejection} | coin={coin}")
+        return mark_price, 0, 0, leverage, rejection
+    if not is_long and mark_price <= tp_price:
+        rejection = f"mark price {mark_price} already at or past TP {tp_price}"
+        logger.warning(f"Signal dropped: {rejection} | coin={coin}")
+        return mark_price, 0, 0, leverage, rejection
     equity = await fetch_account_equity(info, settings.hl_account_address)
     if equity <= 0:
         logger.error(f"Account equity is zero — skipping | coin={coin}")
