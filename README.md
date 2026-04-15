@@ -23,8 +23,8 @@ Signal-driven perpetual trading bot for [Hyperliquid](https://hyperliquid.xyz). 
 Within the readme, six video's are added for reference and cover the basics on installing the Badger Bot. The video's can be found under the following links:
 1. [Choose Your Path](#choose-your-path)
 2. [Before You Start](#before-you-start)
-3. [Hyperliquid API Wallet](#hyperliquid-api-wallet)
-4. [BadgerBot API Key & Telegram Bot & User ID](#badgerbot-api-key)
+3. [Hyperliquid API Wallet](#1-hyperliquid-api-wallet)
+4. [BadgerBot API Key & Telegram Bot & User ID](#21-badgerbot-api-key)
 5. [Path B: VPS / Ubuntu Server](#path-b-vps--ubuntu-server)
 6. [Updating The bot](#updating-the-bot)
 
