@@ -34,7 +34,7 @@ Before starting the installment, determine what type of server you would like to
 → Jump to [Path A: Render (Cloud)](#path-a-render-cloud)\
 → Jump to [Path B: VPS / Ubuntu Server](#path-b-vps--ubuntu-server)
 
-### Video Guide: [Install Badger Bot #1](https://youtu.be/ZSRQBvNP8No)
+#### YouTube Video Guide: [Install Badger Bot #1](https://youtu.be/ZSRQBvNP8No)
 
 ---
 
