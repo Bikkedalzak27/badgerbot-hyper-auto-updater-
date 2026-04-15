@@ -150,7 +150,7 @@ Your bot is now live. It restarts automatically on crash and on new code deploys
 
 ## Path B: VPS / Ubuntu Server
 
-#### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=wVt3PjLdeUQ)
+#### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=5EwYJNIYPpw)
 
 Run the bot on any Ubuntu 22.04+ machine — a VPS, a home server, or your local machine.
 
