@@ -19,7 +19,18 @@ Signal-driven perpetual trading bot for [Hyperliquid](https://hyperliquid.xyz). 
 
 ---
 
+## YouTube Video guide series:
+Within the readme, six video's are added for reference and cover the basics on installing the Badger Bot. The video's can be found under the following links:
+1. [Choose Your Path](#choose-your-path)
+2. [Before You Start](#before-you-start)
+3. [Hyperliquid API Wallet](#hyperliquid-api-wallet)
+4. [BadgerBot API Key & Telegram Bot & User ID](#badgerbot-api-key)
+5. [Path B: VPS / Ubuntu Server](#path-b-vps--ubuntu-server)
+6. [Updating The bot](#updating-the-bot)
+
 ## Choose Your Path
+
+#### YouTube Video Guide: [Install Badger Bot #1](https://youtu.be/ZSRQBvNP8No)
 
 Before starting the installment, determine what type of server you would like to use. In general, a Render service  is easier to install and use yet limits customizability. A VPS / server running on the operating system Ubuntu, has more installment steps yet a larger degree of customizability and more secure (if setup with SSH).
 
@@ -34,11 +45,11 @@ Before starting the installment, determine what type of server you would like to
 → Jump to [Path A: Render (Cloud)](#path-a-render-cloud)\
 → Jump to [Path B: VPS / Ubuntu Server](#path-b-vps--ubuntu-server)
 
-#### YouTube Video Guide: [Install Badger Bot #1](https://youtu.be/ZSRQBvNP8No)
-
 ---
 
 ## Before You Start
+
+#### YouTube Video Guide: [Install Badger Bot #2](https://www.youtube.com/watch?v=q-bco4QEkMk)
 
 Both paths need the same three things. Get these ready before you begin.
 
@@ -50,6 +61,8 @@ Both paths need the same three things. Get these ready before you begin.
 
 ### 1. Hyperliquid API Wallet
 
+#### YouTube Video Guide: [Install Badger Bot #3](https://www.youtube.com/watch?v=zPDts-7mVE4)
+
 To run the bot on Hyperliquid, an API key is required. The API key is only used for placing orders — it has no withdrawal rights. 
 Before requesting an API key, it is required to deposit funds on the platform which can be done by pressing the 'Deposit' button on [app.hyperliquid.xyz/portfolio](https://app.hyperliquid.xyz/portfolio).
 
@@ -58,11 +71,13 @@ Before requesting an API key, it is required to deposit funds on the platform wh
 3. Copy the **private key** shown (starts with `0x`) and temporary store it
 4. Your main wallet address (the one you log in with)
 
-### 2. BadgerBot API Key
+### 2.1 BadgerBot API Key
+
+#### YouTube Video Guide: [Install Badger Bot #4](https://www.youtube.com/watch?v=VPXF2LAxaSI)
 
 Log in to your BadgerBot dashboard and copy your API key → this is `BADGERBOT_API_KEY`.
 
-### 3. Telegram Bot + User ID
+### 2.2 Telegram Bot + User ID
 
 To control and monitor the trading bot, you'll connect it to a Telegram bot you own.
 
@@ -134,6 +149,8 @@ Your bot is now live. It restarts automatically on crash and on new code deploys
 ---
 
 ## Path B: VPS / Ubuntu Server
+
+#### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=wVt3PjLdeUQ)
 
 Run the bot on any Ubuntu 22.04+ machine — a VPS, a home server, or your local machine.
 
@@ -266,6 +283,8 @@ systemctl stop badgerbot              # stop
 ---
 
 ## Updating the Bot
+
+#### YouTube Video Guide: [Install Badger Bot #6](https://www.youtube.com/watch?v=QroSAsK4bqs)
 
 From inside your `badgerbot-hyper` folder:
 
