@@ -150,7 +150,7 @@ Your bot is now live. It restarts automatically on crash and on new code deploys
 
 ## Path B: VPS / Ubuntu Server
 
-#### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=5EwYJNIYPpw)
+#### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=5EwYJNIYPpw) This video does NOT cover server purchase and setup. For this, watching [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is reccomended.
 
 Run the bot on any Ubuntu 22.04+ machine — a VPS, a home server, or your local machine.
 
@@ -163,8 +163,6 @@ Any Ubuntu 22.04+ VPS works. A few options:
 | [Hetzner](https://hetzner.com) | CX11 | ~€4/month |
 | [DigitalOcean](https://digitalocean.com) | Basic Droplet | ~$6/month |
 | [Contabo](https://contabo.com) | VPS S | ~€5/month |
-
-If purchasing and setting up a server is unclear, watching the video: [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is reccomended before proceeding.
 
 SSH into your server:
 ```bash
