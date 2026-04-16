@@ -57,7 +57,7 @@ Both paths need the same three things. Get these ready before you begin.
 - A crypto wallet with funds (e.g. [Rabby](https://rabby.io)) to deposit USDC into Hyperliquid
 - A Telegram account
 - An active [BadgerBot](https://badgerbot.io) subscription and API key
-- A Render service or VPS / Server running the operating system: Ubuntu.
+- A Render service or VPS / Server running the operating system: Ubuntu. More information on this in: [Path B: VPS / Ubuntu Server](#path-b-vps--ubuntu-server)
 
 ### 1. Hyperliquid API Wallet
 
@@ -163,6 +163,8 @@ Any Ubuntu 22.04+ VPS works. A few options:
 | [Hetzner](https://hetzner.com) | CX11 | ~€4/month |
 | [DigitalOcean](https://digitalocean.com) | Basic Droplet | ~$6/month |
 | [Contabo](https://contabo.com) | VPS S | ~€5/month |
+
+If purchasing and setting up a server is unclear, watching the video: [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is reccomended before proceeding.
 
 SSH into your server:
 ```bash
