@@ -164,6 +164,9 @@ Any Ubuntu 22.04+ VPS works. A few options:
 | [DigitalOcean](https://digitalocean.com) | Basic Droplet | ~$6/month |
 | [Contabo](https://contabo.com) | VPS S | ~€5/month |
 
+For vps / server purchasing and setup, the video: [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is of good use.
+To increase vps / server security using SSH keys, view article: [Set up SSH Key Login](https://www.ricmedia.com/tutorials/how-to-set-up-ssh-keys-on-ubuntu-22-04)
+
 SSH into your server:
 ```bash
 ssh root@your-server-ip
