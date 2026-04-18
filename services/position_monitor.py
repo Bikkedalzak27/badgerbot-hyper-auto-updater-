@@ -389,11 +389,30 @@ async def _check_closed_positions(info, settings, notify, exchange) -> None:
     remaining_trades = await fetch_open_trades()
     remaining_coins = {t["coin"] for t in remaining_trades}
 
+    try:
+        all_open_orders = await asyncio.to_thread(
+            info.frontend_open_orders, settings.hl_account_address
+        )
+    except Exception as error:
+        logger.warning(f"Residual check: failed to fetch open orders | {error}")
+        all_open_orders = []
+
     for coin, hl_size in hl_positions.items():
         if coin in remaining_coins:
             continue
         if coin in trades_by_coin:
-            # All DB trades for this coin just closed, but HL position persists — residual.
+            # All DB trades for this coin just closed, but HL position persists.
+            # Only close as residual if no active TP/SL orders remain — if orders exist,
+            # the position is protected and will close naturally when price hits them.
+            has_trigger_orders = any(
+                o.get("coin") == coin and o.get("triggerPx")
+                for o in all_open_orders
+            )
+            if has_trigger_orders:
+                logger.info(
+                    f"Residual skipped — active TP/SL orders still live | coin={coin} | size={hl_size}"
+                )
+                continue
             await _close_residual_position(
                 exchange, info, settings, coin, hl_size, notify
             )
