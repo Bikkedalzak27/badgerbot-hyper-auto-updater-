@@ -152,11 +152,11 @@ Your bot is now live. It restarts automatically on crash and on new code deploys
 
 #### YouTube Video Guide: [Install Badger Bot #5](https://www.youtube.com/watch?v=5EwYJNIYPpw) This video does NOT cover server purchase and setup. For this, watching [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is reccomended.
 
-Run the bot on any Ubuntu 22.04+ machine — a VPS, a home server, or your local machine.
+Run the bot on any Ubuntu 24.04+ machine — a VPS, a home server, or your local machine.
 
 ### Step 1: Get a Server (skip for local)
 
-Any Ubuntu 22.04+ VPS works. A few options:
+Any Ubuntu 24.04+ VPS works. A few options:
 
 | Provider | Plan | Cost |
 |---|---|---|
