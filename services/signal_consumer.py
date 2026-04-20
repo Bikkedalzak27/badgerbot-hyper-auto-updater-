@@ -101,6 +101,20 @@ def validate_signal(signal: dict, mark_price: float, settings: Settings) -> str 
         )
         return reason
 
+    sl_price = float(signal["sl_price"])
+    sl_distance = abs(sl_price - signal_price)
+    sl_remaining = abs(sl_price - mark_price)
+
+    if sl_remaining < sl_distance * settings.max_price_deviation_pct:
+        reason = f"SL eroded ({sl_remaining:.4f} of original {sl_distance:.4f})"
+        logger.warning(
+            f"Signal dropped: SL remaining {sl_remaining:.4f} < threshold"
+            f" {sl_distance * settings.max_price_deviation_pct:.4f}"
+            f" | coin={signal['coin_symbol']} | signal={signal_price} | mark={mark_price}"
+            f" | sl={sl_price}"
+        )
+        return reason
+
     return None
 
 

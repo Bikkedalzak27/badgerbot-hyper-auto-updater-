@@ -169,28 +169,54 @@ def _determine_close_status(trade: dict, close_px: float) -> str:
         return "TP" if close_px <= midpoint else "SL"
 
 
-def _format_close_notification(
-    trade: dict,
-    close_px: float,
-    pnl: float,
-    status: str,
+def _format_batched_close_notification(
+    coin: str,
+    side: str,
+    items: list[dict],
     equity: float,
-    entry_fee: float = 0,
-    close_fee: float = 0,
 ) -> str:
-    entry_px = float(trade["entry_px"])
-    size = float(trade["size"])
-    side = trade["side"]
-    direction_emoji = "⛔" if status == "SL" else ("🟢" if side == "LONG" else "🔴")
-    net = pnl - entry_fee - close_fee
+    """Format one summary message covering all closures processed this cycle.
+
+    Per-trade PnL attribution is unreliable because HL computes closedPnl against
+    the position-average entry, not per-trade. We report aggregates instead.
+    """
+    count = len(items)
+    total_size = sum(i["fill_sz"] for i in items)
+    total_notional = sum(i["fill_sz"] * i["fill_px"] for i in items)
+    avg_exit = total_notional / total_size if total_size > 0 else 0
+    total_pnl = sum(i["pnl"] for i in items)
+    total_fees = sum(i["entry_fee"] + i["close_fee"] for i in items)
+    net = total_pnl - total_fees
     pnl_sign = "+" if net >= 0 else ""
     pnl_pct = (net / equity) * 100 if equity > 0 else 0
     pnl_pct_str = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
 
+    tp_count = sum(1 for i in items if i["status"] == "TP")
+    sl_count = sum(1 for i in items if i["status"] == "SL")
+    if tp_count and sl_count:
+        status_label = f"{tp_count} TP / {sl_count} SL"
+        header_emoji = "🔀"
+    elif tp_count:
+        status_label = f"{tp_count} TP" if count > 1 else "TP"
+        header_emoji = "🟢" if side == "LONG" else "🔴"
+    else:
+        status_label = f"{sl_count} SL" if count > 1 else "SL"
+        header_emoji = "⛔"
+
+    entry_prices = [float(i["trade"]["entry_px"]) for i in items]
+    entry_low, entry_high = min(entry_prices), max(entry_prices)
+    entry_str = (
+        f"${entry_low:,.2f}"
+        if entry_low == entry_high
+        else f"${entry_low:,.2f}–${entry_high:,.2f}"
+    )
+
+    header_suffix = f" ×{count}" if count > 1 else ""
+
     return (
-        f"{direction_emoji} {trade['coin']} {side} CLOSED — {status} @ <code>${close_px:,.2f}</code>\n\n"
-        f"📐 Size: <code>{size} (${size * close_px:,.2f})</code>\n"
-        f"💵 Entry: <code>${entry_px:,.2f}</code> → Exit: <code>${close_px:,.2f}</code>\n"
+        f"{header_emoji} {coin} {side} CLOSED{header_suffix} — {status_label} @ <code>${avg_exit:,.2f}</code>\n\n"
+        f"📐 Size: <code>{total_size} (${total_notional:,.2f})</code>\n"
+        f"💵 Entry: <code>{entry_str}</code> → Exit: <code>${avg_exit:,.2f}</code>\n"
         f"📈 PnL: <code>{pnl_sign}${net:,.2f} ({pnl_pct_str})</code>"
     )
 
@@ -230,6 +256,7 @@ async def _process_coin_closures(
     _fill_retry_state.pop(coin, None)
 
     pending_trades = list(db_trades)
+    closed_items: list[dict] = []
 
     for fill in close_fills:
         if not pending_trades:
@@ -260,12 +287,23 @@ async def _process_coin_closures(
             f"{coin} {side} closed | status={status}"
             f" | entry={trade['entry_px']} exit={fill_px} pnl={pnl:+.2f} net={net:+.2f}"
         )
-        await notify(
-            _format_close_notification(
-                trade, fill_px, pnl, status, equity, entry_fee, close_fee
-            )
+        closed_items.append(
+            {
+                "trade": trade,
+                "fill_px": fill_px,
+                "fill_sz": fill_sz,
+                "pnl": pnl,
+                "entry_fee": entry_fee,
+                "close_fee": close_fee,
+                "status": status,
+            }
         )
         await _cancel_counterpart_order(exchange, info, settings, trade, status)
+
+    if closed_items:
+        await notify(
+            _format_batched_close_notification(coin, side, closed_items, equity)
+        )
 
 
 async def _sweep_cancel_orders(

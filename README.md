@@ -452,6 +452,11 @@ Any coin not listed uses the `DEFAULT` value. Restart the bot after making chang
 
 ## Changelog
 
+**v0.6 — April 20, 2026**
+
+- Batched close notifications: when multiple TP/SL orders fill in a single poll cycle, PositionMonitor now sends one aggregate Telegram message per coin — showing trade count, total size, entry range, avg exit, and summed realized PnL — instead of one message per trade. Per-trade messages were misleading because HL computes `closedPnl` against the position-average entry, so the fill's PnL attributed to a single DB trade didn't reconcile with that trade's own `entry → exit`. Aggregate PnL now matches what you see on the Hyperliquid dashboard.
+- Stop-loss erosion check: signals are dropped if the mark price has moved toward the SL such that remaining stop room is below `MAX_PRICE_DEVIATION_PCT` of the original SL distance — mirroring the existing TP erosion check. Prevents entering a trade that's already too close to being stopped out.
+
 **v0.5 — April 14, 2026**
 
 - Switched from market order entry with separately placed TP/SL to an atomic entry limit order + TP/SL via `normalTpsl` grouping. Entry and both trigger orders are submitted in a single request, giving each lot its own independent OCO pair. This replaces the old flow where HL rejected standalone trigger orders placed after entry with "Main order cannot be trigger order."
