@@ -33,13 +33,35 @@ async def _cancel_counterpart_order(
     # If TP was hit, cancel the SL. If SL was hit, cancel the TP.
     if close_status == "TP":
         target_px = float(trade["sl_px"])
+        target_oid = trade.get("sl_oid")
         label = "SL"
     else:
         target_px = float(trade["tp_px"])
+        target_oid = trade.get("tp_oid")
         label = "TP"
 
     coin = trade["coin"]
     size = float(trade["size"])
+
+    # Primary path: cancel directly by stored OID — unambiguous even when tight/wide
+    # variants share an identical size under capital_insert_pct sizing.
+    if target_oid:
+        try:
+            result = await asyncio.to_thread(exchange.cancel, coin, int(target_oid))
+            if result.get("status") == "ok":
+                logger.info(
+                    f"Cancelled orphaned {label} by oid | coin={coin} | oid={target_oid}"
+                )
+                return
+            logger.warning(
+                f"Cancel {label} by oid non-ok, falling back to heuristic"
+                f" | coin={coin} | oid={target_oid} | result={result}"
+            )
+        except Exception as error:
+            logger.warning(
+                f"Cancel {label} by oid failed, falling back to heuristic"
+                f" | coin={coin} | oid={target_oid} | {error}"
+            )
 
     try:
         orders = await asyncio.to_thread(
@@ -49,7 +71,7 @@ async def _cancel_counterpart_order(
         logger.warning(f"Failed to fetch open orders for {label} cancel | {error}")
         return
 
-    # Match by coin, trigger price (within 0.1%), and size (within 1%)
+    # Fallback: match by coin, trigger price (within 0.1%), and size (within 1%)
     for order in orders:
         if order.get("coin") != coin:
             continue
@@ -104,6 +126,32 @@ def _get_close_fills(fills: list, coin: str, side: str, since_ms: float) -> list
         and expected_dir in f.get("dir", "")
     ]
     return sorted(matching, key=lambda f: f["time"])
+
+
+def _find_trade_by_fill_oid(
+    open_trades: list[dict], fill_oid
+) -> tuple[dict, str] | tuple[None, None]:
+    """Match a close fill to a DB trade by the fill's order id against the stored
+    tp_oid / sl_oid. Returns (trade, "TP"|"SL") on hit, (None, None) otherwise.
+    Unambiguous for tight/wide variants that share an identical size.
+    """
+    if fill_oid is None:
+        return None, None
+    try:
+        fill_oid_int = int(fill_oid)
+    except (TypeError, ValueError):
+        return None, None
+    for trade in open_trades:
+        tp_oid = trade.get("tp_oid")
+        sl_oid = trade.get("sl_oid")
+        try:
+            if tp_oid is not None and int(tp_oid) == fill_oid_int:
+                return trade, "TP"
+            if sl_oid is not None and int(sl_oid) == fill_oid_int:
+                return trade, "SL"
+        except (TypeError, ValueError):
+            continue
+    return None, None
 
 
 def _find_matching_trade(
@@ -267,7 +315,11 @@ async def _process_coin_closures(
         pnl = float(fill.get("closedPnl", 0))
         close_fee = float(fill.get("fee", 0))
 
-        trade = _find_matching_trade(pending_trades, fill_px, fill_sz)
+        # Primary match: fill's order id vs stored tp_oid/sl_oid on each trade.
+        # Disambiguates tight and wide variants that share an identical size.
+        trade, oid_status = _find_trade_by_fill_oid(pending_trades, fill.get("oid"))
+        if trade is None:
+            trade = _find_matching_trade(pending_trades, fill_px, fill_sz)
         if trade is None:
             break
 
@@ -278,7 +330,7 @@ async def _process_coin_closures(
                 entry_fee = found_fee
                 await update_entry_fee(trade["id"], found_fee)
 
-        status = _determine_close_status(trade, fill_px)
+        status = oid_status or _determine_close_status(trade, fill_px)
         await close_trade(trade["id"], pnl, status, close_fee=close_fee)
         pending_trades.remove(trade)
 
@@ -476,9 +528,14 @@ async def find_unprotected_trades(
         return []
 
     trigger_orders: dict[str, list[dict]] = {}
+    live_oids: set[int] = set()
     for o in orders:
         if o.get("triggerPx"):
             trigger_orders.setdefault(o["coin"], []).append(o)
+            try:
+                live_oids.add(int(o["oid"]))
+            except (TypeError, ValueError, KeyError):
+                pass
 
     unprotected = []
     for trade in open_trades:
@@ -486,18 +543,33 @@ async def find_unprotected_trades(
         tp_px = float(trade["tp_px"])
         sl_px = float(trade["sl_px"])
         size = float(trade["size"])
+        tp_oid = trade.get("tp_oid")
+        sl_oid = trade.get("sl_oid")
         coin_orders = trigger_orders.get(coin, [])
 
-        has_tp = any(
-            abs(float(o.get("triggerPx", 0)) - tp_px) / tp_px < 0.001
-            and abs(float(o.get("sz", 0)) - size) / size < 0.01
-            for o in coin_orders
-        )
-        has_sl = any(
-            abs(float(o.get("triggerPx", 0)) - sl_px) / sl_px < 0.001
-            and abs(float(o.get("sz", 0)) - size) / size < 0.01
-            for o in coin_orders
-        )
+        # Prefer OID membership when stored; fallback to price+size heuristic otherwise.
+        if tp_oid is not None:
+            try:
+                has_tp = int(tp_oid) in live_oids
+            except (TypeError, ValueError):
+                has_tp = False
+        else:
+            has_tp = any(
+                abs(float(o.get("triggerPx", 0)) - tp_px) / tp_px < 0.001
+                and abs(float(o.get("sz", 0)) - size) / size < 0.01
+                for o in coin_orders
+            )
+        if sl_oid is not None:
+            try:
+                has_sl = int(sl_oid) in live_oids
+            except (TypeError, ValueError):
+                has_sl = False
+        else:
+            has_sl = any(
+                abs(float(o.get("triggerPx", 0)) - sl_px) / sl_px < 0.001
+                and abs(float(o.get("sz", 0)) - size) / size < 0.01
+                for o in coin_orders
+            )
 
         if not has_tp or not has_sl:
             unprotected.append(trade)

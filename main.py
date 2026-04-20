@@ -13,7 +13,7 @@ from services.position_monitor import run_position_monitor
 from services.signal_consumer import connect_and_listen
 from services.telegram_bot import BotState, TelegramBot
 from services.trade_executor import build_exchange, load_leverage_config, make_signal_handler, safe_spot_meta
-from storage.trade_log import fetch_open_trades, init_trade_log, insert_trade, repair_trade_tpsl, update_trade_status
+from storage.trade_log import fetch_open_trades, init_trade_log, insert_trade, repair_trade_tpsl, update_trade_oids, update_trade_status
 
 LOGS_DIR = Path(__file__).parent / "logs"
 
@@ -77,16 +77,29 @@ def format_open_positions(asset_positions: list) -> str:
 
 
 def _extract_tpsl_for_coin(all_orders: list, coin: str, logger: logging.Logger) -> tuple[float, float]:
-    coin_triggers = [o for o in all_orders if o.get("coin") == coin and o.get("isTrigger")]
-    tp_px = next(
-        (float(o["triggerPx"]) for o in coin_triggers if "profit" in o.get("orderType", "").lower()),
-        0.0,
-    )
-    sl_px = next(
-        (float(o["triggerPx"]) for o in coin_triggers if "stop" in o.get("orderType", "").lower()),
-        0.0,
-    )
+    tp_px, _, sl_px, _ = _extract_tpsl_with_oids_for_coin(all_orders, coin, logger)
     return tp_px, sl_px
+
+
+def _extract_tpsl_with_oids_for_coin(
+    all_orders: list, coin: str, logger: logging.Logger
+) -> tuple[float, str, float, str]:
+    """Return (tp_px, tp_oid, sl_px, sl_oid) for reconciliation of recovered positions.
+    Missing values come back as 0.0 / "" so insert_trade's defaults kick in."""
+    coin_triggers = [o for o in all_orders if o.get("coin") == coin and o.get("isTrigger")]
+    tp_order = next(
+        (o for o in coin_triggers if "profit" in o.get("orderType", "").lower()),
+        None,
+    )
+    sl_order = next(
+        (o for o in coin_triggers if "stop" in o.get("orderType", "").lower()),
+        None,
+    )
+    tp_px = float(tp_order["triggerPx"]) if tp_order else 0.0
+    tp_oid = str(tp_order["oid"]) if tp_order and tp_order.get("oid") is not None else ""
+    sl_px = float(sl_order["triggerPx"]) if sl_order else 0.0
+    sl_oid = str(sl_order["oid"]) if sl_order and sl_order.get("oid") is not None else ""
+    return tp_px, tp_oid, sl_px, sl_oid
 
 
 async def _fetch_all_orders(info: Info, settings: Settings, logger: logging.Logger) -> list:
@@ -130,9 +143,14 @@ async def _reconcile_orphaned_positions(
         side = "LONG" if szi > 0 else "SHORT"
         size = abs(szi)
         entry_px = float(pos.get("entryPx") or 0)
-        tp_px, sl_px = _extract_tpsl_for_coin(all_orders, coin, logger)
+        tp_px, tp_oid, sl_px, sl_oid = _extract_tpsl_with_oids_for_coin(
+            all_orders, coin, logger
+        )
 
-        trade_id = await insert_trade(coin, side, size, entry_px, tp_px, sl_px)
+        trade_id = await insert_trade(
+            coin, side, size, entry_px, tp_px, sl_px,
+            tp_order_id=tp_oid, sl_order_id=sl_oid,
+        )
 
         if tp_px == 0.0 or sl_px == 0.0:
             await update_trade_status(trade_id, "UNPROTECTED")
@@ -148,11 +166,14 @@ async def _reconcile_orphaned_positions(
 
     for trade in unprotected:
         coin = trade["coin"]
-        tp_px, sl_px = _extract_tpsl_for_coin(all_orders, coin, logger)
+        tp_px, tp_oid, sl_px, sl_oid = _extract_tpsl_with_oids_for_coin(
+            all_orders, coin, logger
+        )
         if tp_px == 0.0 or sl_px == 0.0:
             logger.warning(f"UNPROTECTED trade id={trade['id']} {coin} — TP/SL still not found on HL")
             continue
         await repair_trade_tpsl(trade["id"], tp_px, sl_px)
+        await update_trade_oids(trade["id"], tp_oid or None, sl_oid or None)
         logger.info(
             f"Repaired UNPROTECTED trade id={trade['id']} {coin}"
             f" | TP: ${tp_px} | SL: ${sl_px}"

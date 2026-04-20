@@ -225,6 +225,17 @@ def _fetch_post_trade_state(info: Info, address: str, coin: str) -> dict:
     }
 
 
+def _extract_trigger_oid(inner) -> str:
+    """Pull the order id from a TP/SL status item. Returns "" when HL only returned
+    the bare "waitingForTrigger" string (no oid available in that path)."""
+    if isinstance(inner, dict):
+        for key in ("resting", "filled"):
+            oid = inner.get(key, {}).get("oid") if isinstance(inner.get(key), dict) else None
+            if oid is not None:
+                return str(oid)
+    return ""
+
+
 def _tpsl_status_ok(inner, label: str, coin: str) -> bool:
     """Check a single status item from a bulk_orders response."""
     # Trigger orders return the string "waitingForTrigger" on success.
@@ -251,7 +262,7 @@ async def _open_with_tpsl(
     tp_price: float,
     sl_price: float,
     mark_price: float,
-) -> tuple[float | None, bool, bool]:
+) -> tuple[float | None, bool, bool, str, str]:
     """
     Opens a position and places per-lot TP/SL atomically via normalTpsl grouping.
 
@@ -260,7 +271,8 @@ async def _open_with_tpsl(
     own independent OCO pair (unlike positionTpsl, which is position-level and would
     overwrite TP/SL from other lots on the same coin).
 
-    Returns (fill_price, tp_ok, sl_ok). fill_price is None on entry failure.
+    Returns (fill_price, tp_ok, sl_ok, tp_oid, sl_oid). fill_price is None on entry
+    failure; OIDs are empty strings when unavailable.
     """
     await asyncio.to_thread(exchange.update_leverage, leverage, coin, True)
     logger.info(f"Leverage set: {coin} {leverage}x cross")
@@ -319,11 +331,11 @@ async def _open_with_tpsl(
         )
     except Exception as error:
         logger.error(f"Entry+TP/SL order exception | coin={coin} | {error}")
-        return None, False, False
+        return None, False, False, "", ""
 
     if result.get("status") != "ok":
         logger.error(f"Entry+TP/SL placement failed | coin={coin} | result={result}")
-        return None, False, False
+        return None, False, False, "", ""
 
     statuses = result.get("response", {}).get("data", {}).get("statuses", [])
 
@@ -342,10 +354,10 @@ async def _open_with_tpsl(
             )
         elif "error" in entry_inner:
             logger.error(f"Entry order error | coin={coin} | error={entry_inner['error']}")
-            return None, False, False
+            return None, False, False, "", ""
     else:
         logger.error(f"Entry — unexpected status | coin={coin} | inner={entry_inner}")
-        return None, False, False
+        return None, False, False, "", ""
 
     # Parse TP/SL statuses (statuses[1] and statuses[2])
     tp_inner = statuses[1] if len(statuses) > 1 else {}
@@ -353,12 +365,15 @@ async def _open_with_tpsl(
     tp_ok = _tpsl_status_ok(tp_inner, "TP", coin)
     sl_ok = _tpsl_status_ok(sl_inner, "SL", coin)
 
-    if tp_ok:
-        logger.info(f"TP placed @ {tp_price} (limit={tp_limit}) | coin={coin}")
-    if sl_ok:
-        logger.info(f"SL placed @ {sl_price} (limit={sl_limit}) | coin={coin}")
+    tp_oid = _extract_trigger_oid(tp_inner) if tp_ok else ""
+    sl_oid = _extract_trigger_oid(sl_inner) if sl_ok else ""
 
-    return fill_price, tp_ok, sl_ok
+    if tp_ok:
+        logger.info(f"TP placed @ {tp_price} (limit={tp_limit}) | oid={tp_oid} | coin={coin}")
+    if sl_ok:
+        logger.info(f"SL placed @ {sl_price} (limit={sl_limit}) | oid={sl_oid} | coin={coin}")
+
+    return fill_price, tp_ok, sl_ok, tp_oid, sl_oid
 
 
 async def _capture_entry_fee(
@@ -427,7 +442,7 @@ async def execute_signal(
         f" | size={size} | notional=${size * mark_price:.2f} | leverage={leverage}x"
     )
 
-    fill_price, tp_ok, sl_ok = await _open_with_tpsl(
+    fill_price, tp_ok, sl_ok, tp_oid, sl_oid = await _open_with_tpsl(
         exchange, coin, is_long, size, leverage, tp_price, sl_price, mark_price
     )
     if fill_price is None:
@@ -446,7 +461,10 @@ async def execute_signal(
         return
 
     # Write trade record immediately after entry — Financial Safety Rule #4
-    trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
+    trade_id = await insert_trade(
+        coin, direction, size, fill_price, tp_price, sl_price,
+        tp_order_id=tp_oid, sl_order_id=sl_oid,
+    )
 
     direction_emoji = "🟢" if is_long else "🔴"
 
