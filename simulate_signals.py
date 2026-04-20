@@ -115,7 +115,7 @@ async def execute_with_fixed_size(
     sl_price = float(signal["sl_price"])
     leverage = leverage_config.get(coin, leverage_config.get("DEFAULT", 3))
 
-    fill_price, tp_ok, sl_ok = await _open_with_tpsl(
+    fill_price, tp_ok, sl_ok, tp_oid, sl_oid = await _open_with_tpsl(
         exchange, coin, is_long=is_long, size=size, leverage=leverage,
         tp_price=tp_price, sl_price=sl_price, mark_price=float(signal["price"])
     )
@@ -123,7 +123,10 @@ async def execute_with_fixed_size(
         logger.error(f"Entry failed | coin={coin}")
         return None
 
-    trade_id = await insert_trade(coin, direction, size, fill_price, tp_price, sl_price)
+    trade_id = await insert_trade(
+        coin, direction, size, fill_price, tp_price, sl_price,
+        tp_order_id=tp_oid, sl_order_id=sl_oid,
+    )
 
     if not tp_ok or not sl_ok:
         await update_trade_status(trade_id, "UNPROTECTED")

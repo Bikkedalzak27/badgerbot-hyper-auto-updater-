@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS trades (
     pnl         REAL,
     status      TEXT NOT NULL DEFAULT 'OPEN',
     entry_fee   REAL,
-    close_fee   REAL
+    close_fee   REAL,
+    tp_oid      TEXT,
+    sl_oid      TEXT
 )
 """
 
@@ -34,6 +36,11 @@ def _init_schema() -> None:
         for col in ("entry_fee", "close_fee"):
             try:
                 connection.execute(f"ALTER TABLE trades ADD COLUMN {col} REAL")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        for col in ("tp_oid", "sl_oid"):
+            try:
+                connection.execute(f"ALTER TABLE trades ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
                 pass  # column already exists
         _backfill_fees(connection)
@@ -63,15 +70,16 @@ async def init_trade_log() -> None:
 
 
 def _insert_trade(
-    coin: str, side: str, size: float, entry_px: float, tp_px: float, sl_px: float
+    coin: str, side: str, size: float, entry_px: float, tp_px: float, sl_px: float,
+    tp_oid: str | None = None, sl_oid: str | None = None,
 ) -> int:
     opened_at = datetime.now(timezone.utc).isoformat()
     connection = sqlite3.connect(str(DB_PATH))
     try:
         cursor = connection.execute(
-            "INSERT INTO trades (coin, side, size, entry_px, tp_px, sl_px, opened_at, status)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')",
-            (coin, side, size, entry_px, tp_px, sl_px, opened_at),
+            "INSERT INTO trades (coin, side, size, entry_px, tp_px, sl_px, opened_at, status, tp_oid, sl_oid)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)",
+            (coin, side, size, entry_px, tp_px, sl_px, opened_at, tp_oid, sl_oid),
         )
         connection.commit()
         return cursor.lastrowid
@@ -80,11 +88,29 @@ def _insert_trade(
 
 
 async def insert_trade(
-    coin: str, side: str, size: float, entry_px: float, tp_px: float, sl_px: float
+    coin: str, side: str, size: float, entry_px: float, tp_px: float, sl_px: float,
+    tp_order_id: str = "", sl_order_id: str = "",
 ) -> int:
     return await asyncio.to_thread(
-        _insert_trade, coin, side, size, entry_px, tp_px, sl_px
+        _insert_trade, coin, side, size, entry_px, tp_px, sl_px,
+        tp_order_id or None, sl_order_id or None,
     )
+
+
+def _update_trade_oids(trade_id: int, tp_oid: str | None, sl_oid: str | None) -> None:
+    connection = sqlite3.connect(str(DB_PATH))
+    try:
+        connection.execute(
+            "UPDATE trades SET tp_oid = ?, sl_oid = ? WHERE id = ?",
+            (tp_oid, sl_oid, trade_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+async def update_trade_oids(trade_id: int, tp_oid: str | None, sl_oid: str | None) -> None:
+    await asyncio.to_thread(_update_trade_oids, trade_id, tp_oid, sl_oid)
 
 
 def _update_trade_status(trade_id: int, status: str) -> None:
