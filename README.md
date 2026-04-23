@@ -165,7 +165,7 @@ Any Ubuntu 24.04+ VPS works. A few options:
 | [Contabo](https://contabo.com) | VPS S | ~€5/month |
 
 For vps / server purchasing and setup, the video: [Purchase & Setup Hetzner Server](https://www.youtube.com/watch?v=mnFQ2mGJnXI) is of good use.
-> Increase vps / server security (optional) using SSH keys, view article: [Set up SSH Key Login](https://www.ricmedia.com/tutorials/how-to-set-up-ssh-keys-on-ubuntu-22-04)
+> **Optional** Increase vps / server security using SSH keys, view article: [Set up SSH Key Login](https://www.ricmedia.com/tutorials/how-to-set-up-ssh-keys-on-ubuntu-22-04)
 
 SSH into your server:
 ```bash
