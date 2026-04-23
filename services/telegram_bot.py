@@ -853,11 +853,16 @@ class TelegramBot:
         except Exception:
             equity_str = "N/A"
 
+        algorithms_str = ", ".join(self._settings.algorithms)
+
         await self.send(
             f"🟢 BadgerBot Hyper started\n\n"
             f"👛 Account: {_b(short_address)}\n"
             f"💰 Equity: {_b(equity_str)}\n"
             f"📐 Sizing: {_b(sizing)}\n"
+            f"🧠 Algorithms: {_b(algorithms_str)}\n"
+            f"   Double-check spelling against your subscription —"
+            f" send /start to @badger_trading_bot to view compatible algorithms.\n"
             f"📡 Listening for signals..."
         )
 
