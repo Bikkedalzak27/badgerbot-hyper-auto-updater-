@@ -264,6 +264,14 @@ Then install and start the service:
 bash install-service.sh
 ```
 
+> **Custom service name (optional):** the service name defaults to `badgerbot`. To use a different name (e.g. when running multiple bot instances on the same machine), pass it as the first argument:
+>
+> ```bash
+> bash install-service.sh <your-name>
+> ```
+>
+> Replace `<your-name>` with any tag you like. All `systemctl` and `journalctl` commands below then use that name instead of `badgerbot` (e.g. `systemctl --user status <your-name>`).
+
 **Checking status and logs:**
 
 ```bash
