@@ -379,9 +379,7 @@ A BadgerBot subscription may grant access to several signal algorithms. Your ser
 ]
 ```
 
-Use `ALGORITHMS` in your `.env` to tell this bot which of those algorithms it should act on. Every other signal that arrives over the WebSocket is logged and skipped.
-
-Values are matched against the signal's `display_name` **or** `algorithm` field, so you can use either the friendly name or the internal name. Multiple algorithms are comma-separated.
+Use `ALGORITHMS` in your `.env` to tell this bot which of those algorithms it should act on, matched against the signal's `display_name`. Every other signal that arrives over the WebSocket is logged and skipped. Multiple algorithms are comma-separated.
 
 ```env
 # Default — acts only on Ethereum Main signals
@@ -389,9 +387,6 @@ ALGORITHMS=Ethereum Main
 
 # Multiple algorithms
 ALGORITHMS=Ethereum Main, Ethereum Custom RSI
-
-# Using the internal algorithm name instead of the display name
-ALGORITHMS=ETH - Calibration - COMBO
 ```
 
 If `ALGORITHMS` is omitted, the bot defaults to `Ethereum Main`. A signal that carries no algorithm metadata at all is passed through unchanged (backward compatible with older signal formats).

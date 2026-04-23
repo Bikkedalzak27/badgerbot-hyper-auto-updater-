@@ -52,15 +52,14 @@ def build_websocket_url(api_key: str) -> str:
 
 
 def signal_matches_algorithms(signal: dict, allowed: list[str]) -> bool:
-    """Returns True if the signal's algorithm or display_name is in the allowed list,
-    or if the signal carries no algorithm metadata at all (backward compatible)."""
+    """Returns True if the signal's display_name is in the allowed list,
+    or if the signal carries no display_name at all (backward compatible)."""
     if not allowed:
         return True
-    algorithm = signal.get("algorithm")
     display_name = signal.get("display_name")
-    if algorithm is None and display_name is None:
+    if display_name is None:
         return True
-    return algorithm in allowed or display_name in allowed
+    return display_name in allowed
 
 
 def parse_signal(raw_message: str) -> dict | None:
@@ -170,7 +169,6 @@ async def _listen(
                 logger.info(
                     f"Signal skipped: algorithm not opted-in"
                     f" | coin={signal.get('coin_symbol')}"
-                    f" | algorithm={signal.get('algorithm')}"
                     f" | display_name={signal.get('display_name')}"
                     f" | allowed={settings.algorithms}"
                 )
