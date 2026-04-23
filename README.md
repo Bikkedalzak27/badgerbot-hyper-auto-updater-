@@ -328,6 +328,7 @@ systemctl restart badgerbot          # root
 | `MAX_PRICE_DEVIATION_PCT` | No | `0.01` | Drop signal if mark price moved more than 1% |
 | `POSITION_POLL_INTERVAL_SECONDS` | No | `15` | How often to check for filled TP/SL orders |
 | `HYPERBOT_DB_PATH` | No | `./hyperbot.db` | Path to the trade database (set to `/data/hyperbot.db` on Render) |
+| `ALGORITHMS` | No | `Ethereum Main` | Comma-separated list of algorithms this bot should act on — see [Algorithms](#algorithms) |
 
 ---
 
@@ -364,6 +365,36 @@ POSITION_SIZE_PCT=0.05
 ```
 
 With $500 equity, each trade opens a $25 notional position. To disable a mode, comment it out or remove the line — do not set it to `false`.
+
+---
+
+## Algorithms
+
+A BadgerBot subscription may grant access to several signal algorithms. Your server-side subscription exposes an opt-in list roughly shaped like:
+
+```json
+[
+  {"algorithm": "ETH - Calibration - COMBO", "display_name": "Ethereum Main", "subscriber_field": "get_ethereum_main", "telegram": true},
+  {"algorithm": "ETH - RSI", "display_name": "Ethereum Custom RSI", "subscriber_field": "get_custom_rsi", "telegram": false}
+]
+```
+
+Use `ALGORITHMS` in your `.env` to tell this bot which of those algorithms it should act on. Every other signal that arrives over the WebSocket is logged and skipped.
+
+Values are matched against the signal's `display_name` **or** `algorithm` field, so you can use either the friendly name or the internal name. Multiple algorithms are comma-separated.
+
+```env
+# Default — acts only on Ethereum Main signals
+ALGORITHMS=Ethereum Main
+
+# Multiple algorithms
+ALGORITHMS=Ethereum Main, Ethereum Custom RSI
+
+# Using the internal algorithm name instead of the display name
+ALGORITHMS=ETH - Calibration - COMBO
+```
+
+If `ALGORITHMS` is omitted, the bot defaults to `Ethereum Main`. A signal that carries no algorithm metadata at all is passed through unchanged (backward compatible with older signal formats).
 
 ---
 

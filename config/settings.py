@@ -13,6 +13,9 @@ REQUIRED_KEYS = [
 ]
 
 
+DEFAULT_ALGORITHMS = ["Ethereum Main"]
+
+
 @dataclass
 class Settings:
     hl_account_address: str
@@ -26,6 +29,14 @@ class Settings:
     telegram_bot_token: str
     telegram_authorized_user_id: int
     position_poll_interval_seconds: int
+    algorithms: list[str]
+
+
+def _parse_algorithms(raw: str | None) -> list[str]:
+    if not raw:
+        return list(DEFAULT_ALGORITHMS)
+    parsed = [item.strip() for item in raw.split(",") if item.strip()]
+    return parsed or list(DEFAULT_ALGORITHMS)
 
 
 def load_settings() -> Settings:
@@ -52,4 +63,5 @@ def load_settings() -> Settings:
         telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
         telegram_authorized_user_id=int(os.environ["TELEGRAM_AUTHORIZED_USER_ID"]),
         position_poll_interval_seconds=int(os.getenv("POSITION_POLL_INTERVAL_SECONDS", "15")),
+        algorithms=_parse_algorithms(os.getenv("ALGORITHMS")),
     )
