@@ -69,5 +69,3 @@ def load_settings() -> Settings:
         auto_update_enabled=os.getenv("AUTO_UPDATE_ENABLED", "true").lower() == "true",
         auto_update_interval_hours=int(os.getenv("AUTO_UPDATE_INTERVAL_HOURS", "24")),
     )
-
-# TEST UPDATE

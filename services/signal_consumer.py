@@ -284,5 +284,3 @@ async def connect_and_listen(
             await reminder_task
         except asyncio.CancelledError:
             pass
-
-# TEST UPDATE

@@ -6,4 +6,3 @@ logs/*.log
 .venv/
 .DS_Store
 tests/
-# TEST UPDATE
