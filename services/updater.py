@@ -7,6 +7,24 @@ from typing import Callable, Coroutine
 logger = logging.getLogger("Updater")
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_EXAMPLE_PATH = os.path.join(REPO_DIR, ".env.example")
+ENV_PATH = os.path.join(REPO_DIR, ".env")
+
+
+def _parse_env_keys(filepath: str) -> set[str]:
+    """Returns the set of variable names defined in an env file."""
+    keys = set()
+    try:
+        with open(filepath) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    keys.add(line.split("=", 1)[0].strip())
+    except FileNotFoundError:
+        pass
+    return keys
+
+
 GIT_ENV = {**os.environ, "LC_ALL": "C"}
 
 
@@ -58,6 +76,8 @@ async def perform_update(notify: Callable[[str], Coroutine]) -> bool:
     """Pulls changes and restarts the service."""
     logger.info("Update found! Pulling changes...")
     try:
+        env_keys_before = _parse_env_keys(ENV_EXAMPLE_PATH)
+
         process = await asyncio.create_subprocess_exec(
             "git", "rev-parse", "--short", "HEAD",
             stdout=asyncio.subprocess.PIPE,
@@ -122,6 +142,29 @@ async def perform_update(notify: Callable[[str], Coroutine]) -> bool:
         if old_rev == new_rev:
             logger.info("Git pull completed but no changes were applied.")
             return False
+
+        env_keys_after = _parse_env_keys(ENV_EXAMPLE_PATH)
+        new_env_keys = env_keys_after - env_keys_before
+        if new_env_keys:
+            existing_user_keys = _parse_env_keys(ENV_PATH)
+            missing_from_env = new_env_keys - existing_user_keys
+            key_list = "\n".join(f"  • <code>{k}</code>" for k in sorted(new_env_keys))
+            if missing_from_env:
+                missing_list = "\n".join(f"  • <code>{k}</code>" for k in sorted(missing_from_env))
+                env_notice = (
+                    f"\n\n⚙️ <b>.env update required</b>\n"
+                    f"New variable(s) added in <code>.env.example</code>:\n{key_list}\n\n"
+                    f"The following are <b>not yet set</b> in your <code>.env</code>:\n{missing_list}\n"
+                    f"Please add them before the bot restarts."
+                )
+            else:
+                env_notice = (
+                    f"\n\n⚙️ <b>.env.example updated</b>\n"
+                    f"New variable(s) were added:\n{key_list}\n"
+                    f"All appear to be set in your <code>.env</code> already."
+                )
+            logger.info(f"New .env.example keys detected: {new_env_keys}")
+            await notify(env_notice)
 
         logger.info(f"Updated from {old_rev} to {new_rev}. Restarting service...")
         await notify(
