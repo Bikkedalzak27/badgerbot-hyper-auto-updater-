@@ -205,7 +205,7 @@ async def run_updater(
     while not stop_event.is_set():
         try:
             update_status = None
-            for attempt in range(4):
+            for attempt in range(5):
                 update_status = await check_for_updates()
                 if update_status is not None:
                     break
